@@ -1,110 +1,44 @@
-import { MMKV } from 'react-native-mmkv';
-import EncryptedStorage from 'react-native-encrypted-storage';
-import { UserSettings, TradeHistory } from '../types';
+import { ApiKeys, UserSettings, TradeHistory, PortfolioItem, PriceAlert } from '../types';
 
-const storage = new MMKV();
+// In-memory storage for development
+const memoryStorage: Record<string, any> = {};
 
-interface ApiKeys {
-  apiKey: string;
-  apiSecret: string;
-}
-
-interface UserSettings {
-  riskLevel: number;
-  tradingAmount: number;
-  autoTrading: boolean;
-  tradingInterval: number;
-  tradingBotActive: boolean;
-  monitoredCryptos: string[];
-  tradeNotifications: boolean;
-  priceAlerts: boolean;
-  predictionAlerts: boolean;
-}
-
-interface TradeHistory {
-  id: string;
-  cryptocurrency: string;
-  type: 'buy' | 'sell';
-  amount: number;
-  price: number;
-  timestamp: number;
-  total: number;
-}
-
-interface Portfolio {
-  cryptocurrency: string;
-  amount: number;
-  averageBuyPrice: number;
-  lastUpdated: number;
-}
-
-export const StorageService = {
-  // Secure storage for sensitive data
-  async saveApiKeys(apiKey: string, apiSecret: string): Promise<void> {
+export class StorageService {
+  // API Keys
+  static async saveApiKeys(apiKey: string, apiSecret: string): Promise<void> {
     try {
-      await EncryptedStorage.setItem(
-        'api_keys',
-        JSON.stringify({
-          apiKey,
-          apiSecret,
-        })
-      );
+      // In a real app, you would use EncryptedStorage
+      memoryStorage['api_keys'] = { apiKey, apiSecret };
+      console.log('API keys saved');
     } catch (error) {
       console.error('Error saving API keys:', error);
       throw error;
     }
-  },
+  }
 
-  async getApiKeys(): Promise<ApiKeys | null> {
+  static async getApiKeys(): Promise<ApiKeys | null> {
     try {
-      const keys = await EncryptedStorage.getItem('api_keys');
-      return keys ? JSON.parse(keys) : null;
+      // In a real app, you would use EncryptedStorage
+      return memoryStorage['api_keys'] || null;
     } catch (error) {
       console.error('Error retrieving API keys:', error);
       throw error;
     }
-  },
+  }
 
-  async clearApiKeys(): Promise<void> {
+  static async clearApiKeys(): Promise<void> {
     try {
-      await EncryptedStorage.removeItem('api_keys');
+      // In a real app, you would use EncryptedStorage
+      delete memoryStorage['api_keys'];
+      console.log('API keys cleared');
     } catch (error) {
       console.error('Error clearing API keys:', error);
       throw error;
     }
-  },
+  }
 
-  // Push notification token
-  async savePushToken(token: string): Promise<void> {
-    try {
-      await EncryptedStorage.setItem('push_token', token);
-    } catch (error) {
-      console.error('Error saving push token:', error);
-      throw error;
-    }
-  },
-
-  async getPushToken(): Promise<string | null> {
-    try {
-      return await EncryptedStorage.getItem('push_token');
-    } catch (error) {
-      console.error('Error retrieving push token:', error);
-      throw error;
-    }
-  },
-
-  // MMKV storage for user settings
-  saveUserSettings(settings: UserSettings): void {
-    storage.set('user_settings', JSON.stringify(settings));
-  },
-
-  getUserSettings(): UserSettings | null {
-    const settings = storage.getString('user_settings');
-    return settings ? JSON.parse(settings) : null;
-  },
-
-  // Default settings for new users
-  getDefaultSettings(): UserSettings {
+  // User Settings
+  static getDefaultSettings(): UserSettings {
     return {
       riskLevel: 5,
       tradingAmount: 100,
@@ -116,51 +50,75 @@ export const StorageService = {
       priceAlerts: true,
       predictionAlerts: true,
     };
-  },
+  }
 
-  // Trade history management
-  async getTradeHistory(): Promise<TradeHistory[]> {
+  static async saveUserSettings(settings: UserSettings): Promise<void> {
     try {
-      const history = storage.getString('trade_history');
-      return history ? JSON.parse(history) : [];
+      // In a real app, you would use MMKV or AsyncStorage
+      memoryStorage['user_settings'] = settings;
+      console.log('User settings saved');
+    } catch (error) {
+      console.error('Error saving user settings:', error);
+      throw error;
+    }
+  }
+
+  static async getUserSettings(): Promise<UserSettings | null> {
+    try {
+      // In a real app, you would use MMKV or AsyncStorage
+      return memoryStorage['user_settings'] || null;
+    } catch (error) {
+      console.error('Error retrieving user settings:', error);
+      throw error;
+    }
+  }
+
+  // Trade History
+  static async getTradeHistory(): Promise<TradeHistory[]> {
+    try {
+      // In a real app, you would use MMKV or AsyncStorage
+      return memoryStorage['trade_history'] || [];
     } catch (error) {
       console.error('Error getting trade history:', error);
       return [];
     }
-  },
+  }
 
-  async addTradeHistory(trade: TradeHistory): Promise<void> {
+  static async addTradeHistory(trade: TradeHistory): Promise<void> {
     try {
       const history = await this.getTradeHistory();
       history.push(trade);
-      storage.set('trade_history', JSON.stringify(history));
+      memoryStorage['trade_history'] = history;
+      console.log('Trade added to history');
     } catch (error) {
       console.error('Error adding trade to history:', error);
       throw error;
     }
-  },
+  }
 
-  async clearTradeHistory(): Promise<void> {
+  static async clearTradeHistory(): Promise<void> {
     try {
-      storage.delete('trade_history');
+      // In a real app, you would use MMKV or AsyncStorage
+      delete memoryStorage['trade_history'];
+      console.log('Trade history cleared');
     } catch (error) {
       console.error('Error clearing trade history:', error);
       throw error;
     }
-  },
+  }
 
   // Portfolio tracking
-  async getPortfolio(): Promise<{ [symbol: string]: number }> {
+  static async getPortfolio(): Promise<Record<string, number>> {
     try {
-      const portfolio = storage.getString('portfolio');
-      return portfolio ? JSON.parse(portfolio) : {};
+      // In a real app, you would use MMKV or AsyncStorage
+      return memoryStorage['portfolio'] || {};
     } catch (error) {
       console.error('Error getting portfolio:', error);
       return {};
     }
-  },
+  }
 
-  async updatePortfolio(symbol: string, amount: number): Promise<void> {
+  static async updatePortfolio(symbol: string, amount: number): Promise<void> {
     try {
       const portfolio = await this.getPortfolio();
       portfolio[symbol] = (portfolio[symbol] || 0) + amount;
@@ -170,15 +128,38 @@ export const StorageService = {
         delete portfolio[symbol];
       }
       
-      storage.set('portfolio', JSON.stringify(portfolio));
+      memoryStorage['portfolio'] = portfolio;
+      console.log(`Portfolio updated for ${symbol}`);
     } catch (error) {
       console.error('Error updating portfolio:', error);
       throw error;
     }
-  },
+  }
+
+  // Push notification token
+  static async savePushToken(token: string): Promise<void> {
+    try {
+      // In a real app, you would use EncryptedStorage
+      memoryStorage['push_token'] = token;
+      console.log('Push token saved');
+    } catch (error) {
+      console.error('Error saving push token:', error);
+      throw error;
+    }
+  }
+
+  static async getPushToken(): Promise<string | null> {
+    try {
+      // In a real app, you would use EncryptedStorage
+      return memoryStorage['push_token'] || null;
+    } catch (error) {
+      console.error('Error retrieving push token:', error);
+      throw error;
+    }
+  }
 
   // Price alerts
-  async savePriceAlert(symbol: string, targetPrice: number, isAbove: boolean): Promise<void> {
+  static async savePriceAlert(symbol: string, targetPrice: number, isAbove: boolean): Promise<void> {
     try {
       const alerts = await this.getPriceAlerts();
       alerts.push({
@@ -189,46 +170,49 @@ export const StorageService = {
         triggered: false,
         createdAt: Date.now(),
       });
-      storage.set('price_alerts', JSON.stringify(alerts));
+      memoryStorage['price_alerts'] = alerts;
+      console.log('Price alert saved');
     } catch (error) {
       console.error('Error saving price alert:', error);
       throw error;
     }
-  },
+  }
 
-  async getPriceAlerts(): Promise<any[]> {
+  static async getPriceAlerts(): Promise<PriceAlert[]> {
     try {
-      const alerts = storage.getString('price_alerts');
-      return alerts ? JSON.parse(alerts) : [];
+      // In a real app, you would use MMKV or AsyncStorage
+      return memoryStorage['price_alerts'] || [];
     } catch (error) {
       console.error('Error getting price alerts:', error);
       return [];
     }
-  },
+  }
 
-  async updatePriceAlert(alertId: string, updates: any): Promise<void> {
+  static async updatePriceAlert(alertId: string, updates: Partial<PriceAlert>): Promise<void> {
     try {
       const alerts = await this.getPriceAlerts();
       const index = alerts.findIndex(alert => alert.id === alertId);
       
       if (index !== -1) {
         alerts[index] = { ...alerts[index], ...updates };
-        storage.set('price_alerts', JSON.stringify(alerts));
+        memoryStorage['price_alerts'] = alerts;
+        console.log('Price alert updated');
       }
     } catch (error) {
       console.error('Error updating price alert:', error);
       throw error;
     }
-  },
+  }
 
-  async deletePriceAlert(alertId: string): Promise<void> {
+  static async deletePriceAlert(alertId: string): Promise<void> {
     try {
       const alerts = await this.getPriceAlerts();
       const filteredAlerts = alerts.filter(alert => alert.id !== alertId);
-      storage.set('price_alerts', JSON.stringify(filteredAlerts));
+      memoryStorage['price_alerts'] = filteredAlerts;
+      console.log('Price alert deleted');
     } catch (error) {
       console.error('Error deleting price alert:', error);
       throw error;
     }
   }
-}; 
+} 

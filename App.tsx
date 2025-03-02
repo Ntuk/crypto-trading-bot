@@ -4,7 +4,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigation } from './src/navigation';
 import { AuthService } from './src/services/auth';
 import { StorageService } from './src/services/storage';
-import { NotificationService } from './src/services/notification';
 import { LogBox } from 'react-native';
 
 // Ignore specific warnings
@@ -23,13 +22,10 @@ export default function App() {
       // Initialize auth service
       AuthService.initialize();
       
-      // Initialize notification service
-      await NotificationService.initialize();
-      
       // Set default settings if not already set
-      const settings = StorageService.getUserSettings();
+      const settings = await StorageService.getUserSettings();
       if (!settings) {
-        StorageService.saveUserSettings(StorageService.getDefaultSettings());
+        await StorageService.saveUserSettings(StorageService.getDefaultSettings());
       }
     } catch (error) {
       console.error('Error initializing app:', error);
