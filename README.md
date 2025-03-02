@@ -1,124 +1,105 @@
-# CryptoBot - AI-Powered Crypto Trading App
+# Crypto Trading Bot
 
-CryptoBot is a mobile application that uses AI to automate cryptocurrency trading. It integrates with Coinbase for authentication and trading, and uses on-device machine learning for price predictions and trading decisions.
+A mobile application built with React Native and Expo that allows users to monitor cryptocurrency prices, execute trades, and set up automated trading strategies with AI-powered price predictions.
 
 ## Features
 
-- **User Authentication**: Secure login via Coinbase OAuth
-- **Portfolio Management**: Track your crypto assets and performance
-- **AI-Powered Trading**: Automated trading based on price predictions and sentiment analysis
-- **News Analysis**: Sentiment analysis of crypto news to inform trading decisions
-- **Customizable Settings**: Adjust risk levels and trading preferences
+- **Real-time Cryptocurrency Data**: Monitor prices, trends, and market movements for popular cryptocurrencies.
+- **Coinbase Integration**: Connect to your Coinbase account to view balances and execute trades.
+- **AI-Powered Trading**: Leverage machine learning models for price predictions and trading signals.
+- **Automated Trading Bot**: Set up a bot to execute trades automatically based on your risk preferences and AI predictions.
+- **News Sentiment Analysis**: Analyze cryptocurrency news sentiment to inform trading decisions.
+- **Push Notifications**: Receive alerts for price movements, trading signals, and executed trades.
+- **Portfolio Tracking**: Monitor your cryptocurrency holdings and performance over time.
+- **Customizable Settings**: Configure risk levels, trading amounts, and notification preferences.
 
-## Tech Stack
-
-### Frontend
-- React Native with Expo
-- TypeScript
-- NativeWind (Tailwind CSS for React Native)
-- React Navigation
-
-### Backend (On-Device)
-- Python via Pyodide
-- TensorFlow Lite for ML models
-- Scikit-learn for data processing
-
-### Storage
-- MMKV for fast key-value storage
-- EncryptedStorage for secure API keys
-- AsyncStorage for general app data
-
-### External APIs
-- Coinbase API for authentication and trading
-- News API for crypto news
-
-## Setup Instructions
+## Getting Started
 
 ### Prerequisites
+
 - Node.js (v14 or later)
-- pnpm
+- pnpm (v6 or later)
 - Expo CLI
-- Python 3.8+ (for model development)
+- Coinbase account with API keys
 
 ### Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/crypto-trading-bot.git
-cd crypto-trading-bot
-```
+   ```
+   git clone https://github.com/yourusername/crypto-trading-bot.git
+   cd crypto-trading-bot
+   ```
 
 2. Install dependencies:
-```bash
-pnpm install
-```
+   ```
+   pnpm install
+   ```
 
-3. Create a `.env` file in the root directory with your API keys:
-```
-COINBASE_CLIENT_ID=your_coinbase_client_id
-COINBASE_CLIENT_SECRET=your_coinbase_client_secret
-NEWS_API_KEY=your_news_api_key
-```
+3. Set up the Expo structure:
+   ```
+   pnpm run setup
+   ```
 
 4. Start the development server:
-```bash
-pnpm start
-```
+   ```
+   pnpm start
+   ```
 
-5. Run on iOS or Android:
-```bash
-pnpm ios
-# or
-pnpm android
-```
+5. Open the app on your device using the Expo Go app or run it in a simulator.
+
+### Configuration
+
+1. Create a Coinbase account and generate API keys with trading permissions.
+2. In the app, navigate to Settings and enter your API keys.
+3. Configure your risk level, trading amount, and other preferences.
+4. Select cryptocurrencies to monitor and potentially trade.
+
+## Architecture
+
+The application is built with the following technologies:
+
+- **React Native**: Cross-platform mobile framework
+- **Expo**: Development platform for React Native
+- **TypeScript**: Type-safe JavaScript
+- **Python Bridge**: Integration for running Python-based ML models
+- **Coinbase API**: For account information and trading
+- **Encrypted Storage**: For secure storage of API keys and user data
 
 ## Project Structure
 
 ```
 crypto-trading-bot/
-├── app/                  # React Native application
-│   ├── src/
-│   │   ├── components/   # Reusable UI components
-│   │   ├── screens/      # App screens
-│   │   ├── services/     # API and business logic
-│   │   ├── hooks/        # Custom React hooks
-│   │   ├── utils/        # Utility functions
-│   │   └── types/        # TypeScript type definitions
-│   ├── assets/           # Images, fonts, etc.
-│   └── python/           # Python code for ML models
-│       ├── models/       # ML model definitions
-│       ├── services/     # Python services
-│       └── utils/        # Python utility functions
-├── .env                  # Environment variables (not in git)
-└── README.md             # Project documentation
+├── app.json             # Expo configuration
+├── App.tsx              # Main application component
+├── babel.config.js      # Babel configuration
+├── package.json         # Project dependencies
+├── tsconfig.json        # TypeScript configuration
+├── src/
+│   ├── components/      # Reusable UI components
+│   ├── navigation/      # Navigation configuration
+│   ├── screens/         # Application screens
+│   ├── services/        # Business logic and API services
+│   └── utils/           # Utility functions
+├── assets/              # Images, fonts, and other static assets
+└── python/              # Python scripts for ML models
 ```
 
-## Development
+## Security Considerations
 
-### Adding a New Cryptocurrency
-
-1. Update the `CRYPTO_KEYWORDS` object in `app/src/services/news.ts`
-2. Train a model for the new cryptocurrency (optional)
-3. Add the cryptocurrency to the default list in `getDefaultSettings()`
-
-### Training ML Models
-
-1. Navigate to the Python scripts directory:
-```bash
-cd app/python/scripts
-```
-
-2. Run the training script:
-```bash
-python train_model.py --symbol BTC --data_path ../../data/btc_historical.csv
-```
-
-3. The trained model will be saved to `app/python/models/saved/`
-
-## License
-
-MIT
+- API keys are stored securely using encrypted storage.
+- The app does not transmit your API keys to any third-party servers.
+- Trading bot operations run locally on your device.
 
 ## Disclaimer
 
-This application is for educational purposes only. Cryptocurrency trading involves significant risk. Always do your own research before making investment decisions.
+This application is for educational and informational purposes only. Cryptocurrency trading involves significant risk. Always do your own research before making investment decisions. The creators of this application are not responsible for any financial losses incurred while using this software.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Coinbase for providing the API
+- Expo team for the excellent development platform
+- Open source community for various libraries used in this project
