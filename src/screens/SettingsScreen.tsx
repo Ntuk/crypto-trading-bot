@@ -9,7 +9,8 @@ import {
   ScrollView, 
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { StorageService } from '../services/storage';
 import { AuthService } from '../services/auth';
@@ -18,13 +19,23 @@ import { useNavigation } from '@react-navigation/native';
 import { Slider } from '@react-native-community/slider';
 import { MaterialIcons } from '@expo/vector-icons';
 
-export const SettingsScreen = () => {
+const SettingsScreen = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState({
+    riskLevel: 5,
+    tradingAmount: 100,
+    autoTrading: false,
+    tradingInterval: 30,
+    monitoredCryptos: ['BTC', 'ETH'],
+    tradeNotifications: true,
+    priceAlerts: true,
+    predictionAlerts: true,
+  });
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -37,11 +48,6 @@ export const SettingsScreen = () => {
       const userSettings = await StorageService.getUserSettings();
       if (userSettings) {
         setSettings(userSettings);
-      } else {
-        // Set default settings if none exist
-        const defaultSettings = StorageService.getDefaultSettings();
-        setSettings(defaultSettings);
-        await StorageService.saveUserSettings(defaultSettings);
       }
 
       // Check if API keys exist
@@ -49,8 +55,8 @@ export const SettingsScreen = () => {
       if (keys && keys.apiKey && keys.apiSecret) {
         setHasApiKeys(true);
         // Mask the actual keys for display
-        setApiKey('*'.repeat(keys.apiKey.length));
-        setApiSecret('*'.repeat(keys.apiSecret.length));
+        setApiKey('*'.repeat(Math.min(keys.apiKey.length, 20)));
+        setApiSecret('*'.repeat(Math.min(keys.apiSecret.length, 20)));
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -62,11 +68,14 @@ export const SettingsScreen = () => {
 
   const saveSettings = async () => {
     try {
+      setSaving(true);
       await StorageService.saveUserSettings(settings);
       Alert.alert('Success', 'Settings saved successfully.');
     } catch (error) {
       console.error('Error saving settings:', error);
       Alert.alert('Error', 'Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -79,6 +88,7 @@ export const SettingsScreen = () => {
 
       // Only save if they're not masked
       if (!apiKey.includes('*') && !apiSecret.includes('*')) {
+        setSaving(true);
         await StorageService.saveApiKeys(apiKey, apiSecret);
         setHasApiKeys(true);
         Alert.alert('Success', 'API keys saved successfully.');
@@ -88,6 +98,8 @@ export const SettingsScreen = () => {
     } catch (error) {
       console.error('Error saving API keys:', error);
       Alert.alert('Error', 'Failed to save API keys. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -132,6 +144,7 @@ export const SettingsScreen = () => {
           text: 'Reset',
           onPress: async () => {
             try {
+              setSaving(true);
               const defaultSettings = StorageService.getDefaultSettings();
               setSettings(defaultSettings);
               await StorageService.saveUserSettings(defaultSettings);
@@ -139,6 +152,8 @@ export const SettingsScreen = () => {
             } catch (error) {
               console.error('Error resetting settings:', error);
               Alert.alert('Error', 'Failed to reset settings. Please try again.');
+            } finally {
+              setSaving(false);
             }
           },
         },
@@ -157,6 +172,7 @@ export const SettingsScreen = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4ecdc4" />
         <Text style={styles.loadingText}>Loading settings...</Text>
       </View>
     );
@@ -214,36 +230,41 @@ export const SettingsScreen = () => {
                 }
               }}
               secureTextEntry={true}
+              multiline={true}
+              numberOfLines={4}
             />
           </View>
           
-          <TouchableOpacity style={styles.button} onPress={saveApiKeys}>
-            <Text style={styles.buttonText}>
-              {hasApiKeys ? 'Update API Keys' : 'Save API Keys'}
-            </Text>
+          <TouchableOpacity 
+            style={styles.button} 
+            onPress={saveApiKeys}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <Text style={styles.buttonText}>
+                {hasApiKeys ? 'Update API Keys' : 'Save API Keys'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Trading Bot Settings */}
+        {/* Trading Settings */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Trading Bot Settings</Text>
+          <Text style={styles.sectionTitle}>Trading Settings</Text>
           
           <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Risk Level</Text>
-            <View style={styles.sliderContainer}>
-              <Slider
-                style={styles.slider}
-                minimumValue={1}
-                maximumValue={10}
-                step={1}
-                value={settings.riskLevel}
-                onValueChange={(value) => setSettings({...settings, riskLevel: value})}
-                minimumTrackTintColor="#4ecdc4"
-                maximumTrackTintColor="#333"
-                thumbTintColor="#4ecdc4"
-              />
-              <Text style={styles.sliderValue}>{settings.riskLevel}</Text>
-            </View>
+            <Text style={styles.settingLabel}>Risk Level (1-10)</Text>
+            <TextInput
+              style={styles.valueInput}
+              keyboardType="numeric"
+              value={settings.riskLevel.toString()}
+              onChangeText={(text) => {
+                const value = parseInt(text) || 1;
+                setSettings({...settings, riskLevel: Math.min(Math.max(value, 1), 10)});
+              }}
+            />
           </View>
           
           <View style={styles.settingRow}>
@@ -350,11 +371,23 @@ export const SettingsScreen = () => {
 
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.saveButton} onPress={saveSettings}>
-            <Text style={styles.buttonText}>Save Settings</Text>
+          <TouchableOpacity 
+            style={styles.saveButton} 
+            onPress={saveSettings}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <Text style={styles.buttonText}>Save Settings</Text>
+            )}
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.resetButton} onPress={resetSettings}>
+          <TouchableOpacity 
+            style={styles.resetButton} 
+            onPress={resetSettings}
+            disabled={saving}
+          >
             <Text style={styles.buttonText}>Reset to Default</Text>
           </TouchableOpacity>
           
@@ -395,6 +428,7 @@ const styles = StyleSheet.create({
   loadingText: {
     color: 'white',
     fontSize: 16,
+    marginTop: 16,
   },
   section: {
     padding: 16,
@@ -428,6 +462,7 @@ const styles = StyleSheet.create({
     padding: 12,
     color: 'white',
     fontSize: 16,
+    minHeight: 48,
   },
   settingRow: {
     flexDirection: 'row',
@@ -440,21 +475,6 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     color: 'white',
-  },
-  sliderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '60%',
-  },
-  slider: {
-    flex: 1,
-    height: 40,
-  },
-  sliderValue: {
-    color: 'white',
-    marginLeft: 8,
-    width: 30,
-    textAlign: 'center',
   },
   valueInput: {
     backgroundColor: '#333',
@@ -470,6 +490,8 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     marginTop: 16,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   buttonText: {
     color: 'white',
@@ -486,6 +508,8 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     marginBottom: 12,
+    minHeight: 50,
+    justifyContent: 'center',
   },
   resetButton: {
     backgroundColor: '#ff6b6b',
@@ -493,6 +517,8 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     marginBottom: 12,
+    minHeight: 50,
+    justifyContent: 'center',
   },
   logoutButton: {
     backgroundColor: '#333',
@@ -502,4 +528,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
   },
-}); 
+});
+
+export default SettingsScreen; 

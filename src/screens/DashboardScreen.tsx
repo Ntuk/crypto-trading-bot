@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
@@ -21,18 +21,29 @@ export const DashboardScreen = () => {
   const [totalValue, setTotalValue] = useState(0);
   const [botActive, setBotActive] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [hasApiKeys, setHasApiKeys] = useState(false);
 
   useEffect(() => {
+    checkApiKeys();
     loadData();
     checkBotStatus();
     
     // Set up refresh interval
     const interval = setInterval(() => {
       loadData(false);
-    }, 30000); // Refresh every 30 seconds
+    }, 60000); // Refresh every minute
     
     return () => clearInterval(interval);
   }, []);
+
+  const checkApiKeys = async () => {
+    try {
+      const keys = await StorageService.getApiKeys();
+      setHasApiKeys(!!keys);
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+    }
+  };
 
   const checkBotStatus = async () => {
     try {
@@ -48,27 +59,47 @@ export const DashboardScreen = () => {
     if (showLoading) setLoading(true);
     try {
       // Get crypto data
-      const cryptos = await CryptoService.getTopCryptos(5);
+      const cryptos = await CoinbaseApiService.getTopCryptos(5);
       setCryptoData(cryptos);
       
       // Get portfolio data
       const accounts = await CoinbaseApiService.getAccounts();
       if (accounts && accounts.length > 0) {
-        const portfolioData = accounts
-          .filter(account => parseFloat(account.balance) > 0)
-          .map(account => ({
-            currency: account.currency,
-            balance: parseFloat(account.balance),
-            value: account.currency === 'USD' 
-              ? parseFloat(account.balance) 
-              : parseFloat(account.balance) * (cryptos.find(c => c.symbol === account.currency)?.price || 0)
-          }));
+        const portfolioData = [];
+        let totalPortfolioValue = 0;
+        
+        for (const account of accounts) {
+          if (parseFloat(account.balance) > 0) {
+            let value = 0;
+            
+            if (account.currency === 'USD') {
+              value = parseFloat(account.balance);
+            } else {
+              try {
+                const price = await CoinbaseApiService.getSpotPrice(`${account.currency}-USD`);
+                value = parseFloat(account.balance) * price;
+              } catch (error) {
+                console.error(`Error getting price for ${account.currency}:`, error);
+                // Use mock price from crypto data if available
+                const cryptoMatch = cryptos.find(c => c.symbol === account.currency);
+                if (cryptoMatch) {
+                  value = parseFloat(account.balance) * cryptoMatch.price;
+                }
+              }
+            }
+            
+            portfolioData.push({
+              currency: account.currency,
+              balance: parseFloat(account.balance),
+              value
+            });
+            
+            totalPortfolioValue += value;
+          }
+        }
         
         setPortfolio(portfolioData);
-        
-        // Calculate total portfolio value
-        const total = portfolioData.reduce((sum, item) => sum + item.value, 0);
-        setTotalValue(total);
+        setTotalValue(totalPortfolioValue);
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -157,6 +188,24 @@ export const DashboardScreen = () => {
     );
   };
 
+  const renderNoApiKeysMessage = () => {
+    return (
+      <View style={styles.noApiKeysContainer}>
+        <MaterialIcons name="vpn-key" size={48} color="#666" />
+        <Text style={styles.noApiKeysTitle}>API Keys Required</Text>
+        <Text style={styles.noApiKeysText}>
+          To view your portfolio and execute trades, you need to add your Coinbase API keys.
+        </Text>
+        <TouchableOpacity 
+          style={styles.addKeysButton}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <Text style={styles.addKeysButtonText}>Add API Keys</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <ScrollView 
       style={styles.container}
@@ -177,28 +226,31 @@ export const DashboardScreen = () => {
       
       {loading ? (
         <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ecdc4" />
           <Text style={styles.loadingText}>Loading dashboard data...</Text>
         </View>
       ) : (
         <>
-          <View style={styles.portfolioContainer}>
-            <Text style={styles.sectionTitle}>Portfolio Value</Text>
-            <Text style={styles.portfolioValue}>${totalValue.toFixed(2)}</Text>
-            
-            {renderPortfolioChart()}
-            
-            <View style={styles.portfolioList}>
-              {portfolio.map((item, index) => (
-                <View key={index} style={styles.portfolioItem}>
-                  <Text style={styles.currencyName}>{item.currency}</Text>
-                  <View style={styles.balanceContainer}>
-                    <Text style={styles.balance}>{item.balance.toFixed(item.currency === 'USD' ? 2 : 6)} {item.currency}</Text>
-                    <Text style={styles.value}>${item.value.toFixed(2)}</Text>
+          {!hasApiKeys ? renderNoApiKeysMessage() : (
+            <View style={styles.portfolioContainer}>
+              <Text style={styles.sectionTitle}>Portfolio Value</Text>
+              <Text style={styles.portfolioValue}>${totalValue.toFixed(2)}</Text>
+              
+              {renderPortfolioChart()}
+              
+              <View style={styles.portfolioList}>
+                {portfolio.map((item, index) => (
+                  <View key={index} style={styles.portfolioItem}>
+                    <Text style={styles.currencyName}>{item.currency}</Text>
+                    <View style={styles.balanceContainer}>
+                      <Text style={styles.balance}>{item.balance.toFixed(item.currency === 'USD' ? 2 : 6)} {item.currency}</Text>
+                      <Text style={styles.value}>${item.value.toFixed(2)}</Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
-          </View>
+          )}
           
           <View style={styles.marketContainer}>
             <Text style={styles.sectionTitle}>Market Overview</Text>
@@ -290,10 +342,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    minHeight: 300,
   },
   loadingText: {
     color: 'white',
     fontSize: 16,
+    marginTop: 16,
+  },
+  noApiKeysContainer: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 8,
+    margin: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  noApiKeysTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noApiKeysText: {
+    color: '#ccc',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  addKeysButton: {
+    backgroundColor: '#4ecdc4',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  addKeysButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   portfolioContainer: {
     padding: 16,
