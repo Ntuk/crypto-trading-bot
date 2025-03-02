@@ -1,5 +1,5 @@
 import { StorageService } from './storage';
-import * as crypto from 'expo-crypto';
+import * as CryptoJS from 'crypto-js';
 
 const COINBASE_API_URL = 'https://api.coinbase.com/v2';
 const COINBASE_PRO_API_URL = 'https://api.exchange.coinbase.com';
@@ -40,18 +40,9 @@ export class CoinbaseApiService {
 
   private static async createSignature(message: string, secret: string): Promise<string> {
     try {
-      // Using expo-crypto for HMAC signature
-      const data = new TextEncoder().encode(message);
-      const key = new TextEncoder().encode(secret);
-      
-      // Create HMAC SHA256 signature
-      const signature = await crypto.digestStringAsync(
-        crypto.CryptoDigestAlgorithm.SHA256,
-        message,
-        { key }
-      );
-      
-      return signature;
+      // Using CryptoJS for HMAC signature instead of expo-crypto
+      const hmac = CryptoJS.HmacSHA256(message, secret);
+      return hmac.toString(CryptoJS.enc.Hex);
     } catch (error) {
       console.error('Error creating signature:', error);
       throw error;

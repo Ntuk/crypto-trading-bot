@@ -4,27 +4,12 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import { View, Text } from 'react-native';
+import { DashboardScreen } from '../screens/DashboardScreen';
+import { TradeScreen } from '../screens/TradeScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 
 // Import screens
 // For now, let's create placeholder components for screens that might be missing
-const DashboardScreen = () => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' }}>
-    <Text style={{ color: 'white', fontSize: 18 }}>Dashboard Screen</Text>
-  </View>
-);
-
-const TradeScreen = () => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' }}>
-    <Text style={{ color: 'white', fontSize: 18 }}>Trade Screen</Text>
-  </View>
-);
-
-const SettingsScreen = () => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' }}>
-    <Text style={{ color: 'white', fontSize: 18 }}>Settings Screen</Text>
-  </View>
-);
-
 const LoginScreen = () => (
   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' }}>
     <Text style={{ color: 'white', fontSize: 18 }}>Login Screen</Text>
@@ -60,7 +45,7 @@ const MainTabNavigator = () => {
         component={DashboardScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="dashboard" size={size} color={color} />
+            <MaterialIcons name="dashboard" color={color} size={size} />
           ),
         }}
       />
@@ -69,7 +54,7 @@ const MainTabNavigator = () => {
         component={TradeScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="swap-horiz" size={size} color={color} />
+            <MaterialIcons name="swap-horiz" color={color} size={size} />
           ),
         }}
       />
@@ -78,7 +63,7 @@ const MainTabNavigator = () => {
         component={SettingsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="settings" size={size} color={color} />
+            <MaterialIcons name="settings" color={color} size={size} />
           ),
         }}
       />
