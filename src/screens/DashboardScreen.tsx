@@ -32,21 +32,33 @@ export const DashboardScreen = () => {
   const [botActive, setBotActive] = useState(false);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [hasApiKeys, setHasApiKeys] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('DashboardScreen mounted');
     const initializeScreen = async () => {
       try {
+        console.log('Checking for API keys...');
         const hasKeys = await StorageService.hasApiKeys();
+        console.log('Has API keys:', hasKeys);
+        
         setHasApiKeys(hasKeys);
         
         if (hasKeys) {
-          await loadData();
-          await checkBotStatus();
+          // Wait for state to update before loading data
+          setTimeout(async () => {
+            console.log('API keys found, loading data...');
+            await loadData(true);
+            await checkBotStatus();
+          }, 0);
+        } else {
+          console.log('No API keys found, showing API key setup screen');
+          setLoading(false);
         }
       } catch (error) {
         console.error('Error initializing screen:', error);
+        setError('Failed to initialize dashboard. Please try again.');
         setHasApiKeys(false);
-      } finally {
         setLoading(false);
       }
     };
@@ -56,6 +68,7 @@ export const DashboardScreen = () => {
     // Set up refresh interval only if we have API keys
     let interval: NodeJS.Timeout;
     if (hasApiKeys) {
+      console.log('Setting up refresh interval');
       interval = setInterval(() => {
         loadData(false);
       }, 60000); // Refresh every minute
@@ -63,6 +76,7 @@ export const DashboardScreen = () => {
     
     return () => {
       if (interval) {
+        console.log('Cleaning up refresh interval');
         clearInterval(interval);
       }
     };
@@ -88,41 +102,63 @@ export const DashboardScreen = () => {
   };
 
   const loadData = async (showLoading = true) => {
-    if (!hasApiKeys) return;
+    console.log('loadData called with showLoading:', showLoading);
     
-    if (showLoading) setLoading(true);
+    // Get fresh API keys status
+    const hasKeys = await StorageService.hasApiKeys();
+    console.log('Current API keys status:', hasKeys);
+    
+    if (!hasKeys) {
+      console.log('No API keys, skipping data load');
+      setLoading(false);
+      setHasApiKeys(false);
+      return;
+    }
+    
+    if (showLoading) {
+      console.log('Setting loading state to true');
+      setLoading(true);
+    }
+    setError(null);
+    
     try {
+      console.log('Loading dashboard data...');
+      
       // Get crypto data
+      console.log('Fetching top cryptos...');
       const cryptos = await CoinbaseApiService.getTopCryptos(5);
+      console.log('Fetched top cryptos:', cryptos);
       setCryptoData(cryptos);
       
       // Get portfolio data
+      console.log('Fetching Coinbase accounts...');
       const accounts = await CoinbaseApiService.getAccounts();
+      console.log('Received accounts:', accounts);
+      
       if (accounts && accounts.length > 0) {
         const portfolioData = [];
         let totalPortfolioValue = 0;
         
         for (const account of accounts) {
+          console.log('Processing account:', account);
           if (parseFloat(account.balance) > 0) {
             let value = 0;
             
             if (account.currency === 'USD') {
               value = parseFloat(account.balance);
+              console.log('USD account value:', value);
             } else {
               try {
+                console.log(`Getting spot price for ${account.currency}-USD`);
                 const price = await CoinbaseApiService.getSpotPrice(`${account.currency}-USD`);
                 value = parseFloat(account.balance) * price;
-              } catch (error: any) {
+                console.log(`${account.currency} price: ${price}, value: ${value}`);
+              } catch (error) {
                 console.error(`Error getting price for ${account.currency}:`, error);
-                // Check for unauthorized error
-                if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-                  setHasApiKeys(false);
-                  throw error;
-                }
-                // Use mock price from crypto data if available
                 const cryptoMatch = cryptos.find(c => c.symbol === account.currency);
                 if (cryptoMatch) {
                   value = parseFloat(account.balance) * cryptoMatch.price;
+                  console.log(`Using crypto data price for ${account.currency}: ${cryptoMatch.price}, value: ${value}`);
                 }
               }
             }
@@ -134,22 +170,30 @@ export const DashboardScreen = () => {
             });
             
             totalPortfolioValue += value;
+            console.log(`Updated total portfolio value: ${totalPortfolioValue}`);
           }
         }
         
+        console.log('Setting portfolio data:', portfolioData);
         setPortfolio(portfolioData);
         setTotalValue(totalPortfolioValue);
+      } else {
+        console.log('No accounts found or empty accounts array');
+        setPortfolio([]);
+        setTotalValue(0);
       }
     } catch (error: any) {
       console.error('Error loading dashboard data:', error);
+      setError('Failed to load dashboard data. Please check your connection and API keys.');
       if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        console.log('Unauthorized error detected, setting hasApiKeys to false');
         setHasApiKeys(false);
-        setPortfolio([]);
-        setTotalValue(0);
-        setCryptoData([]);
       }
-      Alert.alert('Error', 'Failed to load dashboard data. Please check your connection and API keys.');
+      setPortfolio([]);
+      setTotalValue(0);
+      setCryptoData([]);
     } finally {
+      console.log('Finishing data load, setting loading and refreshing to false');
       setLoading(false);
       setRefreshing(false);
     }
@@ -256,103 +300,118 @@ export const DashboardScreen = () => {
     );
   };
 
-  return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />
-      }
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Dashboard</Text>
-        <TouchableOpacity 
-          style={[styles.botButton, { backgroundColor: botActive ? '#ff6b6b' : '#4ecdc4' }]}
-          onPress={toggleTradingBot}
-        >
-          <Text style={styles.botButtonText}>{botActive ? 'Stop Bot' : 'Start Bot'}</Text>
-          <FontAwesome5 name={botActive ? 'robot' : 'robot'} size={16} color="white" />
-        </TouchableOpacity>
+  // Render error state
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error-outline" size={48} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => loadData()}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      
-      {loading ? (
+    );
+  }
+
+  // Render loading state
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4ecdc4" />
           <Text style={styles.loadingText}>Loading dashboard data...</Text>
         </View>
-      ) : (
-        <>
-          {!hasApiKeys ? renderNoApiKeysMessage() : (
-            <View style={styles.portfolioContainer}>
-              <Text style={styles.sectionTitle}>Portfolio Value</Text>
-              <Text style={styles.portfolioValue}>${totalValue.toFixed(2)}</Text>
-              
-              {renderPortfolioChart()}
-              
-              <View style={styles.portfolioList}>
-                {portfolio.map((item, index) => (
-                  <View key={index} style={styles.portfolioItem}>
-                    <Text style={styles.currencyName}>{item.currency}</Text>
-                    <View style={styles.balanceContainer}>
-                      <Text style={styles.balance}>{item.balance.toFixed(item.currency === 'USD' ? 2 : 6)} {item.currency}</Text>
-                      <Text style={styles.value}>${item.value.toFixed(2)}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
+      </View>
+    );
+  }
+
+  // Render no API keys state
+  if (!hasApiKeys) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        {renderNoApiKeysMessage()}
+      </View>
+    );
+  }
+
+  // Main dashboard render
+  return (
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Dashboard</Text>
+          <TouchableOpacity 
+            style={[styles.botButton, { backgroundColor: botActive ? '#ff6b6b' : '#4ecdc4' }]}
+            onPress={toggleTradingBot}
+          >
+            <Text style={styles.botButtonText}>{botActive ? 'Stop Bot' : 'Start Bot'}</Text>
+            <FontAwesome5 name={botActive ? 'robot' : 'robot'} size={16} color="white" />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.portfolioContainer}>
+          <Text style={styles.sectionTitle}>Portfolio Value</Text>
+          <Text style={styles.portfolioValue}>${(totalValue || 0).toFixed(2)}</Text>
           
-          <View style={styles.marketContainer}>
-            <Text style={styles.sectionTitle}>Market Overview</Text>
-            {cryptoData.map((crypto, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.cryptoItem}
-                onPress={() => (navigation as any).navigate('Trade', { symbol: crypto.symbol })}
-              >
-                <View style={styles.cryptoInfo}>
-                  <Text style={styles.cryptoName}>{crypto.name} ({crypto.symbol})</Text>
-                  <Text style={styles.cryptoPrice}>${crypto.price.toFixed(2)}</Text>
-                </View>
-                <View style={styles.cryptoChange}>
-                  <MaterialIcons 
-                    name={crypto.priceChangePercentage24h >= 0 ? 'trending-up' : 'trending-down'} 
-                    size={24} 
-                    color={crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'} 
-                  />
-                  <Text 
-                    style={[
-                      styles.changeText, 
-                      {color: crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'}
-                    ]}
-                  >
-                    {crypto.priceChangePercentage24h.toFixed(2)}%
+          {renderPortfolioChart()}
+          
+          <View style={styles.portfolioList}>
+            {portfolio.map((item, index) => (
+              <View key={index} style={styles.portfolioItem}>
+                <Text style={styles.currencyName}>{item.currency}</Text>
+                <View style={styles.balanceContainer}>
+                  <Text style={styles.balance}>
+                    {((item.balance || 0).toFixed(item.currency === 'USD' ? 2 : 6))} {item.currency}
                   </Text>
+                  <Text style={styles.value}>${(item.value || 0).toFixed(2)}</Text>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
-          
-          <View style={styles.actionsContainer}>
+        </View>
+        
+        <View style={styles.marketContainer}>
+          <Text style={styles.sectionTitle}>Market Overview</Text>
+          {cryptoData.map((crypto, index) => (
             <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => (navigation as any).navigate('Trade')}
+              key={index} 
+              style={styles.cryptoItem}
+              onPress={() => (navigation as any).navigate('Trade', { symbol: crypto.symbol })}
             >
-              <MaterialIcons name="swap-horiz" size={24} color="white" />
-              <Text style={styles.actionText}>Trade</Text>
+              <View style={styles.cryptoInfo}>
+                <Text style={styles.cryptoName}>{crypto.name} ({crypto.symbol})</Text>
+                <Text style={styles.cryptoPrice}>${(crypto.price || 0).toFixed(2)}</Text>
+              </View>
+              <View style={styles.cryptoChange}>
+                <MaterialIcons 
+                  name={crypto.priceChangePercentage24h >= 0 ? 'trending-up' : 'trending-down'} 
+                  size={24} 
+                  color={crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'} 
+                />
+                <Text 
+                  style={[
+                    styles.changeText, 
+                    {color: crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'}
+                  ]}
+                >
+                  {((crypto.priceChangePercentage24h || 0).toFixed(2))}%
+                </Text>
+              </View>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => (navigation as any).navigate('Settings')}
-            >
-              <MaterialIcons name="settings" size={24} color="white" />
-              <Text style={styles.actionText}>Settings</Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
-    </ScrollView>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
@@ -360,6 +419,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -537,5 +603,29 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     marginTop: 8,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#ff6b6b',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#4ecdc4',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 

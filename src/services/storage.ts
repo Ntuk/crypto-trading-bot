@@ -1,20 +1,22 @@
 import { ApiKeys, UserSettings, TradeHistory, PortfolioItem, PriceAlert } from '../types';
-import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// In-memory storage for development
-const memoryStorage: Record<string, any> = {};
-
-// Development credentials from environment
-const DEV_API_KEY = Constants.expoConfig?.extra?.COINBASE_API_KEY;
-const DEV_API_SECRET = Constants.expoConfig?.extra?.COINBASE_API_SECRET;
+const STORAGE_KEYS = {
+  API_KEYS: 'api_keys',
+  USER_SETTINGS: 'user_settings',
+  TRADE_HISTORY: 'trade_history',
+  PORTFOLIO: 'portfolio',
+  PRICE_ALERTS: 'price_alerts'
+};
 
 export class StorageService {
   // API Keys
   static async saveApiKeys(apiKey: string, apiSecret: string): Promise<void> {
     try {
-      // In a real app, you would use EncryptedStorage
-      memoryStorage['api_keys'] = { apiKey, apiSecret };
-      console.log('API keys saved');
+      console.log('Saving API keys...');
+      const keys: ApiKeys = { apiKey, apiSecret };
+      await AsyncStorage.setItem(STORAGE_KEYS.API_KEYS, JSON.stringify(keys));
+      console.log('API keys saved successfully');
     } catch (error) {
       console.error('Error saving API keys:', error);
       throw error;
@@ -23,12 +25,9 @@ export class StorageService {
 
   static async getApiKeys(): Promise<ApiKeys | null> {
     try {
-      // Check for development credentials first
-      if (DEV_API_KEY && DEV_API_SECRET) {
-        return { apiKey: DEV_API_KEY, apiSecret: DEV_API_SECRET };
-      }
-      // Fallback to stored credentials
-      return memoryStorage['api_keys'] || null;
+      console.log('Retrieving API keys...');
+      const keys = await AsyncStorage.getItem(STORAGE_KEYS.API_KEYS);
+      return keys ? JSON.parse(keys) : null;
     } catch (error) {
       console.error('Error retrieving API keys:', error);
       throw error;
@@ -37,10 +36,8 @@ export class StorageService {
 
   static async hasApiKeys(): Promise<boolean> {
     try {
-      // Check both development and stored credentials
-      const hasDevCredentials = Boolean(DEV_API_KEY && DEV_API_SECRET);
-      const hasStoredCredentials = Boolean(memoryStorage['api_keys']);
-      return hasDevCredentials || hasStoredCredentials;
+      const keys = await this.getApiKeys();
+      return !!(keys?.apiKey && keys?.apiSecret);
     } catch (error) {
       console.error('Error checking API keys:', error);
       return false;
@@ -49,9 +46,7 @@ export class StorageService {
 
   static async clearApiKeys(): Promise<void> {
     try {
-      // In a real app, you would use EncryptedStorage
-      delete memoryStorage['api_keys'];
-      console.log('API keys cleared');
+      await AsyncStorage.removeItem(STORAGE_KEYS.API_KEYS);
     } catch (error) {
       console.error('Error clearing API keys:', error);
       throw error;
@@ -59,24 +54,19 @@ export class StorageService {
   }
 
   // User Settings
-  static getDefaultSettings(): UserSettings {
-    return {
-      riskLevel: 5,
-      tradingAmount: 100,
-      autoTrading: false,
-      tradingInterval: 30,
-      tradingBotActive: false,
-      monitoredCryptos: ['BTC', 'ETH'],
-      tradeNotifications: true,
-      priceAlerts: true,
-      predictionAlerts: true,
-    };
+  static async getUserSettings(): Promise<UserSettings | null> {
+    try {
+      const settings = await AsyncStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
+      return settings ? JSON.parse(settings) : null;
+    } catch (error) {
+      console.error('Error getting user settings:', error);
+      throw error;
+    }
   }
 
   static async saveUserSettings(settings: UserSettings): Promise<void> {
     try {
-      // In a real app, you would use MMKV or AsyncStorage
-      memoryStorage['user_settings'] = settings;
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_SETTINGS, JSON.stringify(settings));
       console.log('User settings saved');
     } catch (error) {
       console.error('Error saving user settings:', error);
@@ -84,24 +74,14 @@ export class StorageService {
     }
   }
 
-  static async getUserSettings(): Promise<UserSettings | null> {
-    try {
-      // In a real app, you would use MMKV or AsyncStorage
-      return memoryStorage['user_settings'] || null;
-    } catch (error) {
-      console.error('Error retrieving user settings:', error);
-      throw error;
-    }
-  }
-
   // Trade History
   static async getTradeHistory(): Promise<TradeHistory[]> {
     try {
-      // In a real app, you would use MMKV or AsyncStorage
-      return memoryStorage['trade_history'] || [];
+      const history = await AsyncStorage.getItem(STORAGE_KEYS.TRADE_HISTORY);
+      return history ? JSON.parse(history) : [];
     } catch (error) {
       console.error('Error getting trade history:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -109,118 +89,60 @@ export class StorageService {
     try {
       const history = await this.getTradeHistory();
       history.push(trade);
-      memoryStorage['trade_history'] = history;
-      console.log('Trade added to history');
+      await AsyncStorage.setItem(STORAGE_KEYS.TRADE_HISTORY, JSON.stringify(history));
     } catch (error) {
-      console.error('Error adding trade to history:', error);
+      console.error('Error adding trade history:', error);
       throw error;
     }
   }
 
-  static async clearTradeHistory(): Promise<void> {
+  // Portfolio
+  static async getPortfolio(): Promise<PortfolioItem[]> {
     try {
-      // In a real app, you would use MMKV or AsyncStorage
-      delete memoryStorage['trade_history'];
-      console.log('Trade history cleared');
-    } catch (error) {
-      console.error('Error clearing trade history:', error);
-      throw error;
-    }
-  }
-
-  // Portfolio tracking
-  static async getPortfolio(): Promise<Record<string, number>> {
-    try {
-      // In a real app, you would use MMKV or AsyncStorage
-      return memoryStorage['portfolio'] || {};
+      const portfolio = await AsyncStorage.getItem(STORAGE_KEYS.PORTFOLIO);
+      return portfolio ? JSON.parse(portfolio) : [];
     } catch (error) {
       console.error('Error getting portfolio:', error);
-      return {};
+      throw error;
     }
   }
 
-  static async updatePortfolio(symbol: string, amount: number): Promise<void> {
+  static async updatePortfolio(cryptoId: string, amount: number): Promise<void> {
     try {
       const portfolio = await this.getPortfolio();
-      portfolio[symbol] = (portfolio[symbol] || 0) + amount;
+      const existingItem = portfolio.find(item => item.cryptoId === cryptoId);
       
-      // Remove if zero
-      if (portfolio[symbol] === 0) {
-        delete portfolio[symbol];
+      if (existingItem) {
+        existingItem.amount += amount;
+      } else {
+        portfolio.push({ cryptoId, amount });
       }
       
-      memoryStorage['portfolio'] = portfolio;
-      console.log(`Portfolio updated for ${symbol}`);
+      await AsyncStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(portfolio));
     } catch (error) {
       console.error('Error updating portfolio:', error);
       throw error;
     }
   }
 
-  // Push notification token
-  static async savePushToken(token: string): Promise<void> {
-    try {
-      // In a real app, you would use EncryptedStorage
-      memoryStorage['push_token'] = token;
-      console.log('Push token saved');
-    } catch (error) {
-      console.error('Error saving push token:', error);
-      throw error;
-    }
-  }
-
-  static async getPushToken(): Promise<string | null> {
-    try {
-      // In a real app, you would use EncryptedStorage
-      return memoryStorage['push_token'] || null;
-    } catch (error) {
-      console.error('Error retrieving push token:', error);
-      throw error;
-    }
-  }
-
-  // Price alerts
-  static async savePriceAlert(symbol: string, targetPrice: number, isAbove: boolean): Promise<void> {
-    try {
-      const alerts = await this.getPriceAlerts();
-      alerts.push({
-        id: Date.now().toString(),
-        symbol,
-        targetPrice,
-        isAbove,
-        triggered: false,
-        createdAt: Date.now(),
-      });
-      memoryStorage['price_alerts'] = alerts;
-      console.log('Price alert saved');
-    } catch (error) {
-      console.error('Error saving price alert:', error);
-      throw error;
-    }
-  }
-
+  // Price Alerts
   static async getPriceAlerts(): Promise<PriceAlert[]> {
     try {
-      // In a real app, you would use MMKV or AsyncStorage
-      return memoryStorage['price_alerts'] || [];
+      const alerts = await AsyncStorage.getItem(STORAGE_KEYS.PRICE_ALERTS);
+      return alerts ? JSON.parse(alerts) : [];
     } catch (error) {
       console.error('Error getting price alerts:', error);
-      return [];
+      throw error;
     }
   }
 
-  static async updatePriceAlert(alertId: string, updates: Partial<PriceAlert>): Promise<void> {
+  static async savePriceAlert(alert: PriceAlert): Promise<void> {
     try {
       const alerts = await this.getPriceAlerts();
-      const index = alerts.findIndex(alert => alert.id === alertId);
-      
-      if (index !== -1) {
-        alerts[index] = { ...alerts[index], ...updates };
-        memoryStorage['price_alerts'] = alerts;
-        console.log('Price alert updated');
-      }
+      alerts.push(alert);
+      await AsyncStorage.setItem(STORAGE_KEYS.PRICE_ALERTS, JSON.stringify(alerts));
     } catch (error) {
-      console.error('Error updating price alert:', error);
+      console.error('Error saving price alert:', error);
       throw error;
     }
   }
@@ -228,9 +150,8 @@ export class StorageService {
   static async deletePriceAlert(alertId: string): Promise<void> {
     try {
       const alerts = await this.getPriceAlerts();
-      const filteredAlerts = alerts.filter(alert => alert.id !== alertId);
-      memoryStorage['price_alerts'] = filteredAlerts;
-      console.log('Price alert deleted');
+      const updatedAlerts = alerts.filter(alert => alert.id !== alertId);
+      await AsyncStorage.setItem(STORAGE_KEYS.PRICE_ALERTS, JSON.stringify(updatedAlerts));
     } catch (error) {
       console.error('Error deleting price alert:', error);
       throw error;

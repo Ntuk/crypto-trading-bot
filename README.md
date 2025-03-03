@@ -13,6 +13,53 @@ A mobile application built with React Native and Expo that allows users to monit
 - **Portfolio Tracking**: Monitor your cryptocurrency holdings and performance over time.
 - **Customizable Settings**: Configure risk levels, trading amounts, and notification preferences.
 
+## Setting Up Coinbase API Keys
+
+To use this application, you'll need to set up API keys from Coinbase Advanced Trade. Follow these steps:
+
+### 1. Create a Coinbase Advanced Trade Account
+
+If you don't already have one, sign up for a Coinbase Advanced Trade account at [https://advanced.coinbase.com/](https://advanced.coinbase.com/).
+
+### 2. Generate API Keys
+
+1. Log in to your Coinbase Advanced Trade account
+2. Go to **Settings** > **API**
+3. Click on **+ New API Key**
+4. Configure the API key with the following permissions:
+   - **View**: Allows the app to view your account information
+   - **Trade**: Allows the app to execute trades on your behalf
+5. Set appropriate IP restrictions if desired (optional but recommended for security)
+6. Complete any required verification steps
+
+### 3. Save Your API Keys
+
+After creating the API key, Coinbase will show you:
+- **API Key**: A UUID string like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+- **API Secret**: A long string, often in PEM format starting with `-----BEGIN EC PRIVATE KEY-----`
+
+**Important**: Copy both the API Key and API Secret immediately and store them securely. The API Secret will only be shown once.
+
+### 4. Enter API Keys in the App
+
+1. Open the app and navigate to the Settings screen
+2. Tap on "API Keys"
+3. Enter your API Key and API Secret
+4. Tap "Test Keys" to verify they work correctly
+5. Tap "Save Keys" to store them securely in the app
+
+## Troubleshooting API Connection Issues
+
+If you're experiencing "Unauthorized" errors when connecting to the Coinbase API, try these steps:
+
+1. **Verify API Key Format**: Ensure your API key is in the correct UUID format
+2. **Check API Secret Format**: The API secret should be properly formatted, including any PEM headers if present
+3. **Confirm Permissions**: Make sure your API key has the necessary permissions (View, Trade)
+4. **Check IP Restrictions**: If you set IP restrictions, ensure your current IP is allowed
+5. **Verify Account Status**: Ensure your Coinbase account is in good standing and not restricted
+6. **Check for Rate Limiting**: Coinbase has rate limits that may temporarily block requests
+7. **Try Regenerating Keys**: If all else fails, try creating new API keys
+
 ## Getting Started
 
 ### Prerequisites

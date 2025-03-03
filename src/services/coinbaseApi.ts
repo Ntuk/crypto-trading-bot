@@ -1,429 +1,266 @@
+import axios from 'axios';
 import { StorageService } from './storage';
-import * as CryptoJS from 'crypto-js';
-import Constants from 'expo-constants';
+import JWT from 'expo-jwt';
+import { SupportedAlgorithms } from 'expo-jwt';
 
-const COINBASE_API_URL = 'https://api.coinbase.com/v2';
-const COINBASE_PRO_API_URL = 'https://api.exchange.coinbase.com';
+// API URL for Coinbase Advanced Trade API v3
+const API_URL = 'https://api.coinbase.com/api/v3';
 
-// For development, use environment variables from expo-constants
-const DEV_API_KEY = Constants.expoConfig?.extra?.COINBASE_API_KEY || '';
-const DEV_API_SECRET = Constants.expoConfig?.extra?.COINBASE_API_SECRET || '';
+// For development purposes only - will be removed in production
+const DEV_API_KEY = "391476e6-d534-4ae3-9993-da994e065e29";
+const DEV_API_SECRET = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIG9hHQxiA+wsHTmppd3LDUiCXc6YIAk6icOxe0Cn72CAoAoGCCqGSM49
+AwEHoUQDQgAEGUdoUyZ4GrDAy1pV2QY5XcEfw/LZlWj8JIbloY+1EaD0ZATV36Dj
+CFJr4xkpT1QnJKI+5Hhr2vNQlM1FRXaAXQ==
+-----END EC PRIVATE KEY-----`;
 
-interface ApiCredentials {
-  apiKey: string;
-  apiSecret: string;
+interface Product {
+  product_id: string;
+  price: string;
+  price_percentage_change_24h: string;
+  volume_24h: string;
+  status: string;
+  quote_currency_id: string;
+  base_currency_id: string;
+  base_name?: string;
+  base_currency_symbol?: string;
 }
 
-export class CoinbaseApiService {
-  private static async getHeaders(method: string = 'GET', requestPath: string = '', body: string = ''): Promise<Headers> {
+class CoinbaseApi {
+  private apiKey: string | null = null;
+  private apiSecret: string | null = null;
+
+  constructor() {
+    this.loadCredentials();
+  }
+
+  private async loadCredentials() {
     try {
-      // Use environment variables in development, otherwise fetch from storage
-      const credentials = DEV_API_KEY && DEV_API_SECRET 
-        ? { apiKey: DEV_API_KEY, apiSecret: DEV_API_SECRET }
-        : await StorageService.getApiKeys();
-
-      if (!credentials) {
-        throw new Error('API credentials not found');
-      }
-
-      const { apiKey, apiSecret } = credentials;
-      const timestamp = Math.floor(Date.now() / 1000).toString();
-      
-      // Create signature for Coinbase API
-      const message = timestamp + method + requestPath + body;
-      const signature = await this.createSignature(message, apiSecret);
-      
-      const headers = new Headers();
-      headers.append('CB-ACCESS-KEY', apiKey);
-      headers.append('CB-ACCESS-SIGN', signature);
-      headers.append('CB-ACCESS-TIMESTAMP', timestamp);
-      headers.append('CB-VERSION', '2021-10-05');
-      headers.append('Content-Type', 'application/json');
-
-      // Debug headers
-      const headerObj: Record<string, string> = {};
-      headers.forEach((value: string, key: string) => {
-        headerObj[key] = value;
-      });
-      
-      console.log('Request details:', {
-        method,
-        requestPath,
-        timestamp,
-        headers: headerObj
-      });
-      
-      return headers;
+      const apiKeys = await StorageService.getApiKeys();
+      this.apiKey = apiKeys?.apiKey || DEV_API_KEY;
+      this.apiSecret = apiKeys?.apiSecret || DEV_API_SECRET;
+      console.log('Credentials loaded:', !!this.apiKey, !!this.apiSecret);
     } catch (error) {
-      console.error('Error creating headers:', error);
-      throw error;
+      console.error('Error loading credentials:', error);
     }
   }
 
-  private static async createSignature(message: string, secret: string): Promise<string> {
+  async testConnection(): Promise<boolean> {
     try {
-      // Using CryptoJS for HMAC signature instead of expo-crypto
-      const hmac = CryptoJS.HmacSHA256(message, secret);
-      return hmac.toString(CryptoJS.enc.Hex);
+      console.log('Testing Coinbase API connection...');
+      const requestPath = '/brokerage/accounts';
+      const response = await this.makeRequest('GET', requestPath);
+      console.log('Connection test response status:', response.status);
+      return response.status === 200;
     } catch (error) {
-      console.error('Error creating signature:', error);
-      throw error;
+      console.error('Connection test failed:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        console.error('Error response:', error.response.data);
+      }
+      return false;
     }
   }
 
-  static async getAccounts(): Promise<any[]> {
+  async isApiKeyValid(): Promise<boolean> {
+    if (!this.apiKey || !this.apiSecret) {
+      console.log('API key or secret not set');
+      return false;
+    }
+
     try {
-      const requestPath = '/accounts';
-      const headers = await this.getHeaders('GET', requestPath);
+      // Simple validation of API key format
+      if (!this.apiKey.match(/^[a-zA-Z0-9]{16,}$/)) {
+        console.log('API key format is invalid');
+        return false;
+      }
+
+      // Test the connection to verify the API key works
+      return await this.testConnection();
+    } catch (error) {
+      console.error('Error validating API key:', error);
+      return false;
+    }
+  }
+
+  async getAccounts(): Promise<any> {
+    try {
+      console.log('Fetching Coinbase accounts...');
+      const requestPath = '/brokerage/accounts';
+      const response = await this.makeRequest('GET', requestPath);
       
-      const response = await fetch(`${COINBASE_API_URL}${requestPath}`, {
-        method: 'GET',
-        headers
-      });
-      
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.error('API Error Response:', {
-          status: response.status,
-          statusText: response.statusText,
-          responseText
-        });
-        throw new Error(`API Error: ${response.status} - ${responseText}`);
+      if (response.status !== 200) {
+        throw new Error('Failed to fetch accounts');
       }
       
-      const responseText = await response.text();
-      console.log('API Response:', responseText);
-      
-      try {
-        const data = JSON.parse(responseText);
-        return data.data || [];
-      } catch (parseError) {
-        console.error('JSON Parse Error:', parseError);
-        console.error('Raw Response:', responseText);
-        throw parseError;
-      }
+      return response.data;
     } catch (error) {
       console.error('Error fetching accounts:', error);
       
-      // Return mock data for development/testing
-      return [
-        { id: '1', currency: 'BTC', balance: '0.5', type: 'wallet' },
-        { id: '2', currency: 'ETH', balance: '5.0', type: 'wallet' },
-        { id: '3', currency: 'USD', balance: '1000.0', type: 'fiat' }
-      ];
+      // Return empty accounts array as fallback
+      return { accounts: [] };
     }
   }
 
-  static async getExchangeRates(currency: string = 'USD'): Promise<any> {
+  async getSpotPrice(cryptoId: string): Promise<any> {
     try {
-      const requestPath = `/exchange-rates?currency=${currency}`;
-      const headers = await this.getHeaders('GET', requestPath);
+      console.log(`Fetching spot price for ${cryptoId}...`);
+      const requestPath = `/brokerage/products/${cryptoId}/ticker`;
+      const response = await this.makeRequest('GET', requestPath);
       
-      const response = await fetch(`${COINBASE_API_URL}${requestPath}`, {
-        method: 'GET',
-        headers
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${errorData.message || response.statusText}`);
+      if (response.status !== 200) {
+        throw new Error(`Failed to fetch spot price for ${cryptoId}`);
       }
       
-      const data = await response.json();
-      return data.data || { rates: {} };
+      return response.data;
     } catch (error) {
-      console.error('Error fetching exchange rates:', error);
-      
-      // Return mock data for development/testing
-      return {
-        currency: 'USD',
-        rates: {
-          BTC: '0.000016',
-          ETH: '0.00025',
-          SOL: '0.01',
-          ADA: '0.5',
-          DOT: '0.04'
-        }
-      };
+      console.error(`Error fetching spot price for ${cryptoId}:`, error);
+      throw error;
     }
   }
 
-  static async getSpotPrice(cryptoPair: string): Promise<number> {
+  async getTopCryptos(limit = 10): Promise<any[]> {
     try {
-      const requestPath = `/prices/${cryptoPair}/spot`;
-      const headers = await this.getHeaders('GET', requestPath);
+      console.log('Fetching top cryptocurrencies...');
+      const requestPath = '/brokerage/products';
+      const response = await this.makeRequest('GET', requestPath);
       
-      const response = await fetch(`${COINBASE_API_URL}${requestPath}`, {
-        method: 'GET',
-        headers
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${errorData.message || response.statusText}`);
+      if (response.status !== 200 || !response.data.products) {
+        throw new Error('Failed to fetch products');
       }
       
-      const data = await response.json();
-      return parseFloat(data.data.amount);
+      console.log(`Fetched ${response.data.products.length} products`);
+      
+      // Filter for USD quote currency and sort by volume
+      const products = response.data.products
+        .filter((product: Product) => product.quote_currency_id === 'USD')
+        .sort((a: Product, b: Product) => {
+          const volumeA = parseFloat(a.volume_24h || '0');
+          const volumeB = parseFloat(b.volume_24h || '0');
+          return volumeB - volumeA;
+        })
+        .slice(0, limit);
+      
+      // Format the response
+      return products.map((product: Product) => ({
+        id: product.product_id,
+        symbol: product.base_currency_id,
+        name: product.base_name || product.base_currency_id,
+        price: parseFloat(product.price || '0'),
+        volume24h: parseFloat(product.volume_24h || '0'),
+        change24h: parseFloat(product.price_percentage_change_24h || '0'),
+      }));
     } catch (error) {
-      console.error(`Error fetching spot price for ${cryptoPair}:`, error);
+      console.error('Error fetching top cryptocurrencies:', error);
       
-      // Return mock data based on the crypto pair
-      const mockPrices: {[key: string]: number} = {
-        'BTC-USD': 50000,
-        'ETH-USD': 3000,
-        'SOL-USD': 100,
-        'ADA-USD': 1.2,
-        'DOT-USD': 25
-      };
-      
-      return mockPrices[cryptoPair] || 0;
-    }
-  }
-
-  static async executeTrade(
-    symbol: string,
-    side: 'buy' | 'sell',
-    amount: number,
-    price?: number
-  ): Promise<any> {
-    try {
-      const requestPath = '/trades';
-      
-      // Prepare order data
-      const orderData: any = {
-        pair: `${symbol}-USD`,
-        side,
-        amount: amount.toString(),
-      };
-      
-      // If price is provided, create a limit order, otherwise create a market order
-      if (price) {
-        orderData.type = 'limit';
-        orderData.price = price.toString();
-      } else {
-        orderData.type = 'market';
-      }
-      
-      const body = JSON.stringify(orderData);
-      const headers = await this.getHeaders('POST', requestPath, body);
-      
-      const response = await fetch(`${COINBASE_API_URL}${requestPath}`, {
-        method: 'POST',
-        headers,
-        body
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${errorData.message || response.statusText}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error(`Error executing ${side} trade for ${symbol}:`, error);
-      
-      // Return mock trade result for development/testing
-      return {
-        id: `mock-order-${Date.now()}`,
-        status: 'completed',
-        pair: `${symbol}-USD`,
-        side,
-        type: price ? 'limit' : 'market',
-        amount,
-        price: price || await this.getSpotPrice(`${symbol}-USD`),
-        created_at: new Date().toISOString()
-      };
-    }
-  }
-
-  static async getOrderHistory(): Promise<any[]> {
-    try {
-      const requestPath = '/orders';
-      const headers = await this.getHeaders('GET', requestPath);
-      
-      const response = await fetch(`${COINBASE_API_URL}${requestPath}`, {
-        method: 'GET',
-        headers
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${errorData.message || response.statusText}`);
-      }
-      
-      const data = await response.json();
-      return data.data || [];
-    } catch (error) {
-      console.error('Error fetching order history:', error);
-      
-      // Return mock order history for development/testing
-      return [
-        {
-          id: 'mock-order-1',
-          status: 'completed',
-          pair: 'BTC-USD',
-          side: 'buy',
-          type: 'market',
-          amount: 0.1,
-          price: 50000,
-          created_at: new Date(Date.now() - 86400000).toISOString() // 1 day ago
-        },
-        {
-          id: 'mock-order-2',
-          status: 'completed',
-          pair: 'ETH-USD',
-          side: 'sell',
-          type: 'limit',
-          amount: 2.5,
-          price: 3100,
-          created_at: new Date(Date.now() - 172800000).toISOString() // 2 days ago
-        }
-      ];
-    }
-  }
-
-  static async getBalance(currency: string): Promise<number> {
-    try {
-      const accounts = await this.getAccounts();
-      const account = accounts.find(acc => acc.currency === currency);
-      
-      return account ? parseFloat(account.balance) : 0;
-    } catch (error) {
-      console.error(`Error fetching ${currency} balance:`, error);
-      
-      // Return mock balance for development/testing
-      const mockBalances: {[key: string]: number} = {
-        'BTC': 0.5,
-        'ETH': 5.0,
-        'SOL': 20.0,
-        'ADA': 1000.0,
-        'DOT': 100.0,
-        'USD': 10000.0
-      };
-      
-      return mockBalances[currency] || 0;
-    }
-  }
-
-  static async getTopCryptos(limit: number = 5): Promise<any[]> {
-    try {
-      // Coinbase doesn't have a direct endpoint for top cryptos by market cap
-      // So we'll get exchange rates and then fetch additional data
-      const exchangeRates = await this.getExchangeRates();
-      
-      // Top cryptocurrencies we want to track
-      const topSymbols = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT'];
-      const result = [];
-      
-      for (const symbol of topSymbols.slice(0, limit)) {
-        try {
-          const price = await this.getSpotPrice(`${symbol}-USD`);
+      // Fallback to a simpler endpoint if the main one fails
+      try {
+        console.log('Attempting fallback...');
+        const response = await axios.get('https://api.coinbase.com/v2/exchange-rates?currency=USD');
+        
+        if (response.status === 200 && response.data.data && response.data.data.rates) {
+          const rates = response.data.data.rates;
+          const cryptos = Object.keys(rates)
+            .filter(symbol => !['USD', 'EUR', 'GBP'].includes(symbol))
+            .map(symbol => ({
+              id: `${symbol}-USD`,
+              symbol,
+              name: symbol,
+              price: 1 / parseFloat(rates[symbol]),
+              volume24h: 0,
+              change24h: 0,
+            }))
+            .slice(0, limit);
           
-          // Get 24h price for calculating change
-          // In a real app, you would store historical data or use a proper endpoint
-          const mockPriceChange = (Math.random() * 10) - 5; // Random value between -5% and +5%
-          
-          result.push({
-            id: symbol.toLowerCase(),
-            symbol,
-            name: this.getCryptoName(symbol),
-            price,
-            priceChangePercentage24h: mockPriceChange,
-            priceChange24h: mockPriceChange,
-            marketCap: price * this.getMockCirculatingSupply(symbol),
-            volume24h: price * this.getMockCirculatingSupply(symbol) * 0.05
-          });
-        } catch (innerError) {
-          console.error(`Error fetching data for ${symbol}:`, innerError);
+          return cryptos;
         }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
       }
       
-      return result;
-    } catch (error) {
-      console.error('Error fetching top cryptos:', error);
-      
-      // Return mock data for development/testing
-      return [
-        {
-          id: 'bitcoin',
-          symbol: 'BTC',
-          name: 'Bitcoin',
-          price: 50000,
-          priceChangePercentage24h: 2.5,
-          priceChange24h: 2.5,
-          marketCap: 950000000000,
-          volume24h: 30000000000,
-        },
-        {
-          id: 'ethereum',
-          symbol: 'ETH',
-          name: 'Ethereum',
-          price: 3000,
-          priceChangePercentage24h: -1.2,
-          priceChange24h: -1.2,
-          marketCap: 350000000000,
-          volume24h: 15000000000,
-        },
-        {
-          id: 'solana',
-          symbol: 'SOL',
-          name: 'Solana',
-          price: 100,
-          priceChangePercentage24h: 5.8,
-          priceChange24h: 5.8,
-          marketCap: 35000000000,
-          volume24h: 2500000000,
-        },
-        {
-          id: 'cardano',
-          symbol: 'ADA',
-          name: 'Cardano',
-          price: 1.2,
-          priceChangePercentage24h: 0.5,
-          priceChange24h: 0.5,
-          marketCap: 40000000000,
-          volume24h: 1200000000,
-        },
-        {
-          id: 'polkadot',
-          symbol: 'DOT',
-          name: 'Polkadot',
-          price: 25,
-          priceChangePercentage24h: -2.1,
-          priceChange24h: -2.1,
-          marketCap: 25000000000,
-          volume24h: 1000000000,
-        },
-      ].slice(0, limit);
+      return [];
     }
   }
 
-  // Helper methods
-  private static getCryptoName(symbol: string): string {
-    const names: {[key: string]: string} = {
-      'BTC': 'Bitcoin',
-      'ETH': 'Ethereum',
-      'SOL': 'Solana',
-      'ADA': 'Cardano',
-      'DOT': 'Polkadot'
-    };
-    
-    return names[symbol] || symbol;
+  private async makeRequest(method: string, requestPath: string, body: any = null): Promise<any> {
+    if (!this.apiKey || !this.apiSecret) {
+      throw new Error('API key and secret must be set');
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const headers = this.getHeaders(method, requestPath, timestamp, body);
+
+    return axios({
+      method,
+      url: `${API_URL}${requestPath}`,
+      headers,
+      data: body,
+    });
   }
-  
-  private static getMockCirculatingSupply(symbol: string): number {
-    const supply: {[key: string]: number} = {
-      'BTC': 19000000,
-      'ETH': 120000000,
-      'SOL': 350000000,
-      'ADA': 33000000000,
-      'DOT': 1000000000
-    };
+
+  private getHeaders(method: string, requestPath: string, timestamp: string, body: any = null): Record<string, string> {
+    const jwt = this.generateJWT(method, requestPath, timestamp, body);
     
-    return supply[symbol] || 1000000;
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${jwt}`,
+    };
   }
-} 
+
+  private generateJWT(method: string, requestPath: string, timestamp: string, body: any = null): string {
+    try {
+      const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const message = timestamp + method + requestPath + (body ? JSON.stringify(body) : '');
+      
+      // Create JWT payload
+      const payload = {
+        sub: this.apiKey || '', // Ensure sub is never null
+        iss: 'coinbase-cloud',
+        nbf: parseInt(timestamp) - 5, // Allow for 5 seconds of clock skew
+        exp: parseInt(timestamp) + 60, // Token valid for 60 seconds
+        iat: parseInt(timestamp),
+        message: message,
+        nonce: nonce
+      };
+      
+      // Use expo-jwt to create the JWT
+      return JWT.encode(payload, this.apiSecret!, { algorithm: SupportedAlgorithms.HS256 });
+    } catch (error) {
+      console.error('Error generating JWT:', error);
+      throw error;
+    }
+  }
+}
+
+// Create a singleton instance
+const coinbaseApi = new CoinbaseApi();
+
+// For backward compatibility with existing imports
+export class CoinbaseApiService {
+  static getTopCryptos = coinbaseApi.getTopCryptos.bind(coinbaseApi);
+  static testConnection = coinbaseApi.testConnection.bind(coinbaseApi);
+  static isApiKeyValid = coinbaseApi.isApiKeyValid.bind(coinbaseApi);
+  static getAccounts = coinbaseApi.getAccounts.bind(coinbaseApi);
+  static getSpotPrice = coinbaseApi.getSpotPrice.bind(coinbaseApi);
+}
+
+// Export both the class and the singleton instance
+export { CoinbaseApi };
+export default coinbaseApi;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
