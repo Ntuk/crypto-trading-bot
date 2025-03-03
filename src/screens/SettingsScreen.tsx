@@ -16,10 +16,10 @@ import { StorageService } from '../services/storage';
 import { AuthService } from '../services/auth';
 import { NotificationService } from '../services/notification';
 import { useNavigation } from '@react-navigation/native';
-import Slider from '@react-native-community/slider';
 import { MaterialIcons } from '@expo/vector-icons';
 import { RootStackParamList, UserSettings } from '../types';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { CoinbaseApiService } from '../services/coinbaseApi';
 
 type SettingsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -58,13 +58,32 @@ const SettingsScreen = () => {
         setSettings(userSettings);
       }
 
-      // Check if API keys exist
+      // Check if API keys exist and validate them
       const keys = await StorageService.getApiKeys();
       if (keys && keys.apiKey && keys.apiSecret) {
-        setHasApiKeys(true);
-        // Mask the actual keys for display
-        setApiKey('*'.repeat(Math.min(keys.apiKey.length, 20)));
-        setApiSecret('*'.repeat(Math.min(keys.apiSecret.length, 20)));
+        try {
+          await CoinbaseApiService.getAccounts();
+          setHasApiKeys(true);
+          // Mask the actual keys for display
+          setApiKey('*'.repeat(Math.min(keys.apiKey.length, 20)));
+          setApiSecret('*'.repeat(Math.min(keys.apiSecret.length, 20)));
+        } catch (error: any) {
+          if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+            setHasApiKeys(false);
+            setApiKey('');
+            setApiSecret('');
+            Alert.alert('Warning', 'Your saved API keys appear to be invalid. Please update them.');
+          } else {
+            setHasApiKeys(true);
+            // Still mask the keys even if we couldn't verify them
+            setApiKey('*'.repeat(Math.min(keys.apiKey.length, 20)));
+            setApiSecret('*'.repeat(Math.min(keys.apiSecret.length, 20)));
+          }
+        }
+      } else {
+        setHasApiKeys(false);
+        setApiKey('');
+        setApiSecret('');
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -98,8 +117,21 @@ const SettingsScreen = () => {
       if (!apiKey.includes('*') && !apiSecret.includes('*')) {
         setSaving(true);
         await StorageService.saveApiKeys(apiKey, apiSecret);
-        setHasApiKeys(true);
-        Alert.alert('Success', 'API keys saved successfully.');
+        
+        // Validate the keys work by making a test API call
+        try {
+          await CoinbaseApiService.getAccounts();
+          setHasApiKeys(true);
+          Alert.alert('Success', 'API keys saved and verified successfully.');
+        } catch (error: any) {
+          if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+            setHasApiKeys(false);
+            Alert.alert('Error', 'The provided API keys are invalid. Please check your credentials.');
+          } else {
+            setHasApiKeys(true);
+            Alert.alert('Success', 'API keys saved successfully, but could not verify them. Please check your connection.');
+          }
+        }
       } else {
         Alert.alert('Info', 'No changes made to API keys.');
       }

@@ -34,22 +34,44 @@ export const DashboardScreen = () => {
   const [hasApiKeys, setHasApiKeys] = useState(false);
 
   useEffect(() => {
-    checkApiKeys();
-    loadData();
-    checkBotStatus();
+    const initializeScreen = async () => {
+      try {
+        const hasKeys = await StorageService.hasApiKeys();
+        setHasApiKeys(hasKeys);
+        
+        if (hasKeys) {
+          await loadData();
+          await checkBotStatus();
+        }
+      } catch (error) {
+        console.error('Error initializing screen:', error);
+        setHasApiKeys(false);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    // Set up refresh interval
-    const interval = setInterval(() => {
-      loadData(false);
-    }, 60000); // Refresh every minute
+    initializeScreen();
     
-    return () => clearInterval(interval);
+    // Set up refresh interval only if we have API keys
+    let interval: NodeJS.Timeout;
+    if (hasApiKeys) {
+      interval = setInterval(() => {
+        loadData(false);
+      }, 60000); // Refresh every minute
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, []);
 
   const checkApiKeys = async () => {
     try {
-      const keys = await StorageService.getApiKeys();
-      setHasApiKeys(!!keys);
+      const hasKeys = await StorageService.hasApiKeys();
+      setHasApiKeys(hasKeys);
     } catch (error) {
       console.error('Error checking API keys:', error);
     }
@@ -66,6 +88,8 @@ export const DashboardScreen = () => {
   };
 
   const loadData = async (showLoading = true) => {
+    if (!hasApiKeys) return;
+    
     if (showLoading) setLoading(true);
     try {
       // Get crypto data
@@ -88,8 +112,13 @@ export const DashboardScreen = () => {
               try {
                 const price = await CoinbaseApiService.getSpotPrice(`${account.currency}-USD`);
                 value = parseFloat(account.balance) * price;
-              } catch (error) {
+              } catch (error: any) {
                 console.error(`Error getting price for ${account.currency}:`, error);
+                // Check for unauthorized error
+                if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+                  setHasApiKeys(false);
+                  throw error;
+                }
                 // Use mock price from crypto data if available
                 const cryptoMatch = cryptos.find(c => c.symbol === account.currency);
                 if (cryptoMatch) {
@@ -111,8 +140,14 @@ export const DashboardScreen = () => {
         setPortfolio(portfolioData);
         setTotalValue(totalPortfolioValue);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading dashboard data:', error);
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        setHasApiKeys(false);
+        setPortfolio([]);
+        setTotalValue(0);
+        setCryptoData([]);
+      }
       Alert.alert('Error', 'Failed to load dashboard data. Please check your connection and API keys.');
     } finally {
       setLoading(false);

@@ -39,6 +39,19 @@ export class CoinbaseApiService {
       headers.append('CB-ACCESS-TIMESTAMP', timestamp);
       headers.append('CB-VERSION', '2021-10-05');
       headers.append('Content-Type', 'application/json');
+
+      // Debug headers
+      const headerObj: Record<string, string> = {};
+      headers.forEach((value: string, key: string) => {
+        headerObj[key] = value;
+      });
+      
+      console.log('Request details:', {
+        method,
+        requestPath,
+        timestamp,
+        headers: headerObj
+      });
       
       return headers;
     } catch (error) {
@@ -69,12 +82,26 @@ export class CoinbaseApiService {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API Error: ${errorData.message || response.statusText}`);
+        const responseText = await response.text();
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseText
+        });
+        throw new Error(`API Error: ${response.status} - ${responseText}`);
       }
       
-      const data = await response.json();
-      return data.data || [];
+      const responseText = await response.text();
+      console.log('API Response:', responseText);
+      
+      try {
+        const data = JSON.parse(responseText);
+        return data.data || [];
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError);
+        console.error('Raw Response:', responseText);
+        throw parseError;
+      }
     } catch (error) {
       console.error('Error fetching accounts:', error);
       

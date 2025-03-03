@@ -1,7 +1,12 @@
 import { ApiKeys, UserSettings, TradeHistory, PortfolioItem, PriceAlert } from '../types';
+import Constants from 'expo-constants';
 
 // In-memory storage for development
 const memoryStorage: Record<string, any> = {};
+
+// Development credentials from environment
+const DEV_API_KEY = Constants.expoConfig?.extra?.COINBASE_API_KEY;
+const DEV_API_SECRET = Constants.expoConfig?.extra?.COINBASE_API_SECRET;
 
 export class StorageService {
   // API Keys
@@ -18,11 +23,27 @@ export class StorageService {
 
   static async getApiKeys(): Promise<ApiKeys | null> {
     try {
-      // In a real app, you would use EncryptedStorage
+      // Check for development credentials first
+      if (DEV_API_KEY && DEV_API_SECRET) {
+        return { apiKey: DEV_API_KEY, apiSecret: DEV_API_SECRET };
+      }
+      // Fallback to stored credentials
       return memoryStorage['api_keys'] || null;
     } catch (error) {
       console.error('Error retrieving API keys:', error);
       throw error;
+    }
+  }
+
+  static async hasApiKeys(): Promise<boolean> {
+    try {
+      // Check both development and stored credentials
+      const hasDevCredentials = Boolean(DEV_API_KEY && DEV_API_SECRET);
+      const hasStoredCredentials = Boolean(memoryStorage['api_keys']);
+      return hasDevCredentials || hasStoredCredentials;
+    } catch (error) {
+      console.error('Error checking API keys:', error);
+      return false;
     }
   }
 
@@ -216,3 +237,5 @@ export class StorageService {
     }
   }
 } 
+
+

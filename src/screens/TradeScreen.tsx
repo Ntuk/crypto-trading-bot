@@ -40,8 +40,30 @@ export const TradeScreen = () => {
   const [hasApiKeys, setHasApiKeys] = useState(false);
 
   useEffect(() => {
-    checkApiKeys();
-    loadCryptoOptions();
+    const initializeScreen = async () => {
+      try {
+        const hasKeys = await StorageService.hasApiKeys();
+        setHasApiKeys(hasKeys);
+        
+        if (hasKeys) {
+          const cryptos = await CoinbaseApiService.getTopCryptos(5);
+          setCryptoOptions(cryptos);
+          
+          if (cryptos.length > 0) {
+            setSelectedCrypto(cryptos[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing screen:', error);
+        setHasApiKeys(false);
+        setCryptoOptions([]);
+        setSelectedCrypto(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    initializeScreen();
   }, []);
 
   useEffect(() => {
@@ -61,34 +83,11 @@ export const TradeScreen = () => {
     }
   }, [amount, selectedCrypto]);
 
-  const checkApiKeys = async () => {
-    try {
-      const keys = await StorageService.getApiKeys();
-      setHasApiKeys(!!keys);
-    } catch (error) {
-      console.error('Error checking API keys:', error);
-    }
-  };
-
-  const loadCryptoOptions = async () => {
-    try {
-      const cryptos = await CoinbaseApiService.getTopCryptos(5);
-      setCryptoOptions(cryptos);
-      
-      if (!selectedCrypto && cryptos.length > 0) {
-        setSelectedCrypto(cryptos[0]);
-      }
-    } catch (error) {
-      console.error('Error loading crypto options:', error);
-      Alert.alert('Error', 'Failed to load cryptocurrency options.');
-    }
-  };
-
   const loadData = async () => {
+    if (!hasApiKeys || !selectedCrypto) return;
+
     try {
       setLoading(true);
-      
-      if (!selectedCrypto) return;
       
       // Get USD balance
       const usdBalance = await CoinbaseApiService.getBalance('USD');
@@ -97,8 +96,16 @@ export const TradeScreen = () => {
       // Get crypto balance
       const cryptoBalance = await CoinbaseApiService.getBalance(selectedCrypto.symbol);
       setAvailableCrypto(cryptoBalance);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading data:', error);
+      // If we get a 401 error, update hasApiKeys state and clear data
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        setHasApiKeys(false);
+        setAvailableBalance(0);
+        setAvailableCrypto(0);
+        setCryptoOptions([]);
+        setSelectedCrypto(null);
+      }
       Alert.alert('Error', 'Failed to load account data. Please check your API keys.');
     } finally {
       setLoading(false);
