@@ -1,8 +1,13 @@
 import { StorageService } from './storage';
 import * as CryptoJS from 'crypto-js';
+import Constants from 'expo-constants';
 
 const COINBASE_API_URL = 'https://api.coinbase.com/v2';
 const COINBASE_PRO_API_URL = 'https://api.exchange.coinbase.com';
+
+// For development, use environment variables from expo-constants
+const DEV_API_KEY = Constants.expoConfig?.extra?.COINBASE_API_KEY || '';
+const DEV_API_SECRET = Constants.expoConfig?.extra?.COINBASE_API_SECRET || '';
 
 interface ApiCredentials {
   apiKey: string;
@@ -12,7 +17,11 @@ interface ApiCredentials {
 export class CoinbaseApiService {
   private static async getHeaders(method: string = 'GET', requestPath: string = '', body: string = ''): Promise<Headers> {
     try {
-      const credentials = await StorageService.getApiKeys();
+      // Use environment variables in development, otherwise fetch from storage
+      const credentials = DEV_API_KEY && DEV_API_SECRET 
+        ? { apiKey: DEV_API_KEY, apiSecret: DEV_API_SECRET }
+        : await StorageService.getApiKeys();
+
       if (!credentials) {
         throw new Error('API credentials not found');
       }
