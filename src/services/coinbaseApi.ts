@@ -388,3 +388,7 @@ export class CoinbaseApiService {
     return supply[symbol] || 1000000;
   }
 } 
+
+
+
+
