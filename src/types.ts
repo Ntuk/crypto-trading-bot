@@ -82,6 +82,9 @@ export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   AuthLoading: undefined;
+  MainTabs: undefined;
+  AccountDetails: undefined;
+  ApiSettings: undefined;
 };
 
 export type MainTabParamList = {

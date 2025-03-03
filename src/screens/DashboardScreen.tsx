@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { CryptoService } from '../services/crypto';
@@ -9,18 +10,27 @@ import { TradingService } from '../services/trading';
 import { CoinbaseApiService } from '../services/coinbaseApi';
 import { NotificationService } from '../services/notification';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { MainTabParamList, CryptoData, UserSettings } from '../types';
+
+type DashboardScreenNavigationProp = BottomTabNavigationProp<MainTabParamList, 'Dashboard'>;
 
 const screenWidth = Dimensions.get('window').width;
 
+interface PortfolioItem {
+  currency: string;
+  balance: number;
+  value: number;
+}
+
 export const DashboardScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<DashboardScreenNavigationProp>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [cryptoData, setCryptoData] = useState([]);
-  const [portfolio, setPortfolio] = useState([]);
+  const [cryptoData, setCryptoData] = useState<CryptoData[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [totalValue, setTotalValue] = useState(0);
   const [botActive, setBotActive] = useState(false);
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
   const [hasApiKeys, setHasApiKeys] = useState(false);
 
   useEffect(() => {
@@ -117,6 +127,8 @@ export const DashboardScreen = () => {
 
   const toggleTradingBot = async () => {
     try {
+      if (!settings) return;
+      
       if (botActive) {
         await TradingService.stopTradingBot();
         NotificationService.sendLocalNotification(
@@ -132,7 +144,10 @@ export const DashboardScreen = () => {
       }
       
       // Update settings
-      const updatedSettings = { ...settings, tradingBotActive: !botActive };
+      const updatedSettings: UserSettings = {
+        ...settings,
+        tradingBotActive: !botActive
+      };
       await StorageService.saveUserSettings(updatedSettings);
       setSettings(updatedSettings);
       setBotActive(!botActive);
@@ -258,7 +273,7 @@ export const DashboardScreen = () => {
               <TouchableOpacity 
                 key={index} 
                 style={styles.cryptoItem}
-                onPress={() => navigation.navigate('Trade', { crypto })}
+                onPress={() => (navigation as any).navigate('Trade', { symbol: crypto.symbol })}
               >
                 <View style={styles.cryptoInfo}>
                   <Text style={styles.cryptoName}>{crypto.name} ({crypto.symbol})</Text>
@@ -286,7 +301,7 @@ export const DashboardScreen = () => {
           <View style={styles.actionsContainer}>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('Trade')}
+              onPress={() => (navigation as any).navigate('Trade')}
             >
               <MaterialIcons name="swap-horiz" size={24} color="white" />
               <Text style={styles.actionText}>Trade</Text>
@@ -294,7 +309,7 @@ export const DashboardScreen = () => {
             
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('Settings')}
+              onPress={() => (navigation as any).navigate('Settings')}
             >
               <MaterialIcons name="settings" size={24} color="white" />
               <Text style={styles.actionText}>Settings</Text>

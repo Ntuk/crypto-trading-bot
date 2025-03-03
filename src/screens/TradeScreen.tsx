@@ -11,25 +11,32 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CoinbaseApiService } from '../services/coinbaseApi';
 import { StorageService } from '../services/storage';
+import { MainTabParamList, CryptoData } from '../types';
+import { StackNavigationProp } from '@react-navigation/stack';
+
+type TradeScreenNavigationProp = StackNavigationProp<MainTabParamList, 'Trade'>;
+type TradeScreenRouteProp = RouteProp<MainTabParamList, 'Trade'>;
 
 export const TradeScreen = () => {
-  const route = useRoute();
-  const navigation = useNavigation();
-  const { crypto } = route.params || {};
+  const route = useRoute<TradeScreenRouteProp>();
+  const navigation = useNavigation<TradeScreenNavigationProp>();
+  const { symbol, action } = route.params || {};
   
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState(false);
-  const [selectedCrypto, setSelectedCrypto] = useState(crypto || null);
-  const [tradeAction, setTradeAction] = useState('buy');
+  const [selectedCrypto, setSelectedCrypto] = useState<CryptoData | null>(null);
+  const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>(
+    action?.toLowerCase() as 'buy' | 'sell' || 'buy'
+  );
   const [amount, setAmount] = useState('');
   const [usdValue, setUsdValue] = useState(0);
   const [availableBalance, setAvailableBalance] = useState(0);
   const [availableCrypto, setAvailableCrypto] = useState(0);
-  const [cryptoOptions, setCryptoOptions] = useState([]);
+  const [cryptoOptions, setCryptoOptions] = useState<CryptoData[]>([]);
   const [hasApiKeys, setHasApiKeys] = useState(false);
 
   useEffect(() => {
@@ -117,6 +124,11 @@ export const TradeScreen = () => {
   };
 
   const validateTrade = (): boolean => {
+    if (!selectedCrypto) {
+      Alert.alert('Error', 'Please select a cryptocurrency first.');
+      return false;
+    }
+
     if (!hasApiKeys) {
       Alert.alert(
         'API Keys Required', 
@@ -156,7 +168,7 @@ export const TradeScreen = () => {
   };
 
   const executeTrade = async () => {
-    if (!validateTrade()) return;
+    if (!validateTrade() || !selectedCrypto) return;
     
     try {
       setExecuting(true);

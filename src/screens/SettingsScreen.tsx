@@ -16,13 +16,17 @@ import { StorageService } from '../services/storage';
 import { AuthService } from '../services/auth';
 import { NotificationService } from '../services/notification';
 import { useNavigation } from '@react-navigation/native';
-import { Slider } from '@react-native-community/slider';
+import Slider from '@react-native-community/slider';
 import { MaterialIcons } from '@expo/vector-icons';
+import { RootStackParamList, UserSettings } from '../types';
+import { StackNavigationProp } from '@react-navigation/stack';
+
+type SettingsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const SettingsScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<SettingsScreenNavigationProp>();
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<UserSettings>({
     riskLevel: 5,
     tradingAmount: 100,
     autoTrading: false,
@@ -31,6 +35,10 @@ const SettingsScreen = () => {
     tradeNotifications: true,
     priceAlerts: true,
     predictionAlerts: true,
+    tradingBotActive: false,
+    selectedCryptos: ['BTC', 'ETH'],
+    tradingEnabled: false,
+    maxTradeAmount: 100,
   });
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
