@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ActivityIndicator, FlatList, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LineChart } from 'react-native-chart-kit';
@@ -33,6 +33,11 @@ export const DashboardScreen = () => {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [hasApiKeys, setHasApiKeys] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreCryptos, setHasMoreCryptos] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 5; // Number of cryptos to load per page
+  const [useMockData, setUseMockData] = useState(true);
 
   useEffect(() => {
     console.log('DashboardScreen mounted');
@@ -43,6 +48,9 @@ export const DashboardScreen = () => {
         console.log('Has API keys:', hasKeys);
         
         setHasApiKeys(hasKeys);
+        
+        // Initialize mock data setting
+        setUseMockData(CoinbaseApiService.isUsingMockData());
         
         if (hasKeys) {
           // Wait for state to update before loading data
@@ -124,11 +132,15 @@ export const DashboardScreen = () => {
     try {
       console.log('Loading dashboard data...');
       
-      // Get crypto data
+      // Reset pagination state when doing a full refresh
+      setCurrentPage(0);
+      
+      // Get crypto data with pagination
       console.log('Fetching top cryptos...');
-      const cryptos = await CoinbaseApiService.getTopCryptos(5);
-      console.log('Fetched top cryptos:', cryptos);
-      setCryptoData(cryptos);
+      const result = await CoinbaseApiService.getTopCryptos(pageSize, 0);
+      console.log('Fetched top cryptos:', result.data);
+      setCryptoData(result.data);
+      setHasMoreCryptos(result.hasMore);
       
       // Get portfolio data
       console.log('Fetching Coinbase accounts...');
@@ -155,7 +167,7 @@ export const DashboardScreen = () => {
                 console.log(`${account.currency} price: ${price}, value: ${value}`);
               } catch (error) {
                 console.error(`Error getting price for ${account.currency}:`, error);
-                const cryptoMatch = cryptos.find(c => c.symbol === account.currency);
+                const cryptoMatch = cryptoData.find(c => c.symbol === account.currency);
                 if (cryptoMatch) {
                   value = parseFloat(account.balance) * cryptoMatch.price;
                   console.log(`Using crypto data price for ${account.currency}: ${cryptoMatch.price}, value: ${value}`);
@@ -199,6 +211,32 @@ export const DashboardScreen = () => {
     }
   };
 
+  const loadMoreCryptos = async () => {
+    if (!hasMoreCryptos || loadingMore) return;
+    
+    try {
+      setLoadingMore(true);
+      console.log(`Loading more cryptos, page ${currentPage + 1}`);
+      
+      const nextPage = currentPage + 1;
+      const result = await CoinbaseApiService.getTopCryptos(pageSize, nextPage);
+      
+      if (result.data.length > 0) {
+        console.log(`Loaded ${result.data.length} more cryptos`);
+        setCryptoData(prevData => [...prevData, ...result.data]);
+        setCurrentPage(nextPage);
+        setHasMoreCryptos(result.hasMore);
+      } else {
+        console.log('No more cryptos to load');
+        setHasMoreCryptos(false);
+      }
+    } catch (error) {
+      console.error('Error loading more cryptos:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     loadData(false);
@@ -235,6 +273,13 @@ export const DashboardScreen = () => {
       console.error('Error toggling trading bot:', error);
       Alert.alert('Error', 'Failed to toggle trading bot. Please try again.');
     }
+  };
+
+  const toggleMockData = (value: boolean) => {
+    setUseMockData(value);
+    CoinbaseApiService.setUseMockData(value);
+    // Reload data with the new setting
+    loadData(true);
   };
 
   const renderPortfolioChart = () => {
@@ -339,6 +384,75 @@ export const DashboardScreen = () => {
     );
   }
 
+  // Render crypto item for FlatList
+  const renderCryptoItem = ({ item }: { item: CryptoData }) => (
+    <TouchableOpacity 
+      style={styles.cryptoItem}
+      onPress={() => (navigation as any).navigate('Trade', { symbol: item.symbol })}
+    >
+      <View style={styles.cryptoInfo}>
+        <Text style={styles.cryptoName}>{item.name} ({item.symbol})</Text>
+        <Text style={styles.cryptoPrice}>${(item.price || 0).toFixed(2)}</Text>
+      </View>
+      <View style={styles.cryptoChange}>
+        <MaterialIcons 
+          name={item.priceChangePercentage24h >= 0 ? 'trending-up' : 'trending-down'} 
+          size={24} 
+          color={item.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'} 
+        />
+        <Text 
+          style={[
+            styles.changeText, 
+            {color: item.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'}
+          ]}
+        >
+          {((item.priceChangePercentage24h || 0).toFixed(2))}%
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Render footer for FlatList (loading indicator)
+  const renderFooter = () => {
+    if (loadingMore) {
+      return (
+        <View style={styles.loadingMoreContainer}>
+          <ActivityIndicator size="small" color="#4ecdc4" />
+          <Text style={styles.loadingMoreText}>Loading more...</Text>
+        </View>
+      );
+    }
+    
+    if (!hasMoreCryptos && cryptoData.length > 0) {
+      return (
+        <View style={styles.endOfListContainer}>
+          <Text style={styles.endOfListText}>No more cryptocurrencies to load</Text>
+        </View>
+      );
+    }
+    
+    return null;
+  };
+
+  // Render empty component for FlatList
+  const renderEmptyComponent = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color="#4ecdc4" />
+          <Text style={styles.emptyText}>Loading cryptocurrencies...</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.emptyContainer}>
+        <MaterialIcons name="sentiment-dissatisfied" size={48} color="#666" />
+        <Text style={styles.emptyText}>No cryptocurrencies found</Text>
+      </View>
+    );
+  };
+
   // Main dashboard render
   return (
     <View style={styles.container}>
@@ -357,6 +471,17 @@ export const DashboardScreen = () => {
             <Text style={styles.botButtonText}>{botActive ? 'Stop Bot' : 'Start Bot'}</Text>
             <FontAwesome5 name={botActive ? 'robot' : 'robot'} size={16} color="white" />
           </TouchableOpacity>
+        </View>
+        
+        <View style={styles.dataSourceContainer}>
+          <Text style={styles.dataSourceText}>Use Mock Data</Text>
+          <Switch
+            trackColor={{ false: '#767577', true: '#4ecdc4' }}
+            thumbColor={useMockData ? '#f4f3f4' : '#f4f3f4'}
+            ios_backgroundColor="#3e3e3e"
+            onValueChange={toggleMockData}
+            value={useMockData}
+          />
         </View>
         
         <View style={styles.portfolioContainer}>
@@ -382,33 +507,19 @@ export const DashboardScreen = () => {
         
         <View style={styles.marketContainer}>
           <Text style={styles.sectionTitle}>Market Overview</Text>
-          {cryptoData.map((crypto, index) => (
-            <TouchableOpacity 
-              key={index} 
-              style={styles.cryptoItem}
-              onPress={() => (navigation as any).navigate('Trade', { symbol: crypto.symbol })}
-            >
-              <View style={styles.cryptoInfo}>
-                <Text style={styles.cryptoName}>{crypto.name} ({crypto.symbol})</Text>
-                <Text style={styles.cryptoPrice}>${(crypto.price || 0).toFixed(2)}</Text>
-              </View>
-              <View style={styles.cryptoChange}>
-                <MaterialIcons 
-                  name={crypto.priceChangePercentage24h >= 0 ? 'trending-up' : 'trending-down'} 
-                  size={24} 
-                  color={crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'} 
-                />
-                <Text 
-                  style={[
-                    styles.changeText, 
-                    {color: crypto.priceChangePercentage24h >= 0 ? '#4ecdc4' : '#ff6b6b'}
-                  ]}
-                >
-                  {((crypto.priceChangePercentage24h || 0).toFixed(2))}%
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+          <FlatList
+            data={cryptoData}
+            renderItem={renderCryptoItem}
+            keyExtractor={(item) => item.id}
+            scrollEnabled={false} // Disable scrolling since it's inside ScrollView
+            ListFooterComponent={renderFooter}
+            ListEmptyComponent={renderEmptyComponent}
+            onEndReached={loadMoreCryptos}
+            onEndReachedThreshold={0.5}
+            initialNumToRender={5}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+          />
         </View>
       </ScrollView>
     </View>
@@ -627,5 +738,47 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+  },
+  loadingMoreText: {
+    color: '#4ecdc4',
+    marginLeft: 10,
+  },
+  dataSourceContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1e1e1e',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  dataSourceText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  endOfListContainer: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  endOfListText: {
+    color: '#888',
+    fontSize: 14,
+  },
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: '#888',
+    fontSize: 16,
+    marginTop: 10,
   },
 }); 
