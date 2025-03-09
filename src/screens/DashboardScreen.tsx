@@ -38,6 +38,7 @@ export const DashboardScreen = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 5; // Number of cryptos to load per page
   const [useMockData, setUseMockData] = useState(true);
+  const [useProxy, setUseProxy] = useState(false);
 
   useEffect(() => {
     console.log('DashboardScreen mounted');
@@ -49,8 +50,9 @@ export const DashboardScreen = () => {
         
         setHasApiKeys(hasKeys);
         
-        // Initialize mock data setting
+        // Initialize mock data and proxy settings
         setUseMockData(CoinbaseApiService.isUsingMockData());
+        setUseProxy(CoinbaseApiService.isUsingProxy());
         
         if (hasKeys) {
           // Wait for state to update before loading data
@@ -144,40 +146,76 @@ export const DashboardScreen = () => {
       
       // Get portfolio data
       console.log('Fetching Coinbase accounts...');
-      const accounts = await CoinbaseApiService.getAccounts();
-      console.log('Received accounts:', accounts);
+      const accountsResponse = await CoinbaseApiService.getAccounts();
+      console.log('Received accounts response:', JSON.stringify(accountsResponse));
+
+      // Extract accounts array from the response
+      const accounts = accountsResponse?.accounts || [];
+      console.log(`Processing ${accounts.length} accounts`);
       
       if (accounts && accounts.length > 0) {
         const portfolioData = [];
         let totalPortfolioValue = 0;
         
         for (const account of accounts) {
-          console.log('Processing account:', account);
-          if (parseFloat(account.balance) > 0) {
+          console.log('Processing account:', JSON.stringify(account));
+          
+          // Check for different possible account balance property names
+          let balance = '0';
+          if (account.available_balance && account.available_balance.value) {
+            balance = account.available_balance.value;
+          } else if (account.balance) {
+            balance = account.balance;
+          } else if (account.available) {
+            balance = account.available;
+          } else if (account.amount) {
+            balance = account.amount;
+          }
+          
+          // Check for different possible currency property names
+          let currency = '';
+          if (account.currency) {
+            currency = account.currency;
+          } else if (account.available_balance && account.available_balance.currency) {
+            currency = account.available_balance.currency;
+          } else if (account.currency_id) {
+            currency = account.currency_id;
+          } else if (account.currency_code) {
+            currency = account.currency_code;
+          }
+          
+          console.log(`Account ${currency} has balance: ${balance}`);
+          
+          if (parseFloat(balance) > 0 && currency) {
             let value = 0;
             
-            if (account.currency === 'USD') {
-              value = parseFloat(account.balance);
+            if (currency === 'USD') {
+              value = parseFloat(balance);
               console.log('USD account value:', value);
             } else {
               try {
-                console.log(`Getting spot price for ${account.currency}-USD`);
-                const price = await CoinbaseApiService.getSpotPrice(`${account.currency}-USD`);
-                value = parseFloat(account.balance) * price;
-                console.log(`${account.currency} price: ${price}, value: ${value}`);
+                console.log(`Getting spot price for ${currency}-USD`);
+                const priceResponse = await CoinbaseApiService.getSpotPrice(`${currency}-USD`);
+                // Handle different possible price response formats
+                const price = typeof priceResponse === 'object' 
+                  ? (priceResponse.price || priceResponse.amount || '0') 
+                  : priceResponse;
+                
+                value = parseFloat(balance) * parseFloat(price);
+                console.log(`${currency} price: ${price}, value: ${value}`);
               } catch (error) {
-                console.error(`Error getting price for ${account.currency}:`, error);
-                const cryptoMatch = cryptoData.find(c => c.symbol === account.currency);
+                console.error(`Error getting price for ${currency}:`, error);
+                const cryptoMatch = cryptoData.find(c => c.symbol === currency);
                 if (cryptoMatch) {
-                  value = parseFloat(account.balance) * cryptoMatch.price;
-                  console.log(`Using crypto data price for ${account.currency}: ${cryptoMatch.price}, value: ${value}`);
+                  value = parseFloat(balance) * cryptoMatch.price;
+                  console.log(`Using crypto data price for ${currency}: ${cryptoMatch.price}, value: ${value}`);
                 }
               }
             }
             
             portfolioData.push({
-              currency: account.currency,
-              balance: parseFloat(account.balance),
+              currency,
+              balance: parseFloat(balance),
               value
             });
             
@@ -276,10 +314,15 @@ export const DashboardScreen = () => {
   };
 
   const toggleMockData = (value: boolean) => {
-    setUseMockData(value);
     CoinbaseApiService.setUseMockData(value);
-    // Reload data with the new setting
-    loadData(true);
+    setUseMockData(value);
+    onRefresh();
+  };
+
+  const toggleProxy = (value: boolean) => {
+    CoinbaseApiService.setUseProxy(value);
+    setUseProxy(value);
+    onRefresh();
   };
 
   const renderPortfolioChart = () => {
@@ -481,6 +524,16 @@ export const DashboardScreen = () => {
             ios_backgroundColor="#3e3e3e"
             onValueChange={toggleMockData}
             value={useMockData}
+          />
+        </View>
+        
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Use CORS Proxy</Text>
+          <Switch
+            value={useProxy}
+            onValueChange={toggleProxy}
+            trackColor={{ false: '#767577', true: '#81b0ff' }}
+            thumbColor={useProxy ? '#f5dd4b' : '#f4f3f4'}
           />
         </View>
         
@@ -780,5 +833,19 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 16,
     marginTop: 10,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1e1e1e',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  settingLabel: {
+    color: 'white',
+    fontSize: 16,
   },
 }); 
