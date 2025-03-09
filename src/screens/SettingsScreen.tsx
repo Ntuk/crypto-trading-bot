@@ -299,7 +299,7 @@ const SettingsScreen = () => {
             <TextInput
               style={styles.valueInput}
               keyboardType="numeric"
-              value={settings.riskLevel.toString()}
+              value={(settings.riskLevel ?? 1).toString()}
               onChangeText={(text) => {
                 const value = parseInt(text) || 1;
                 setSettings({...settings, riskLevel: Math.min(Math.max(value, 1), 10)});
@@ -312,7 +312,7 @@ const SettingsScreen = () => {
             <TextInput
               style={styles.valueInput}
               keyboardType="numeric"
-              value={settings.tradingAmount.toString()}
+              value={(settings.tradingAmount ?? 100).toString()}
               onChangeText={(text) => {
                 const amount = parseFloat(text) || 0;
                 setSettings({...settings, tradingAmount: amount});
@@ -335,7 +335,7 @@ const SettingsScreen = () => {
             <TextInput
               style={styles.valueInput}
               keyboardType="numeric"
-              value={settings.tradingInterval.toString()}
+              value={(settings.tradingInterval ?? 30).toString()}
               onChangeText={(text) => {
                 const interval = parseInt(text) || 30;
                 setSettings({...settings, tradingInterval: interval});
